@@ -14,7 +14,7 @@ type ApiJson<T> = {
   error?: string;
 };
 
-function hrmsApiUrl(url: string) {
+export function hrmsApiUrl(url: string) {
   if (url.startsWith("/api/hr/") || url.startsWith("/api/auth")) return url;
   if (url.startsWith("/api/")) return `/api/hr${url.slice(4)}`;
   return url;

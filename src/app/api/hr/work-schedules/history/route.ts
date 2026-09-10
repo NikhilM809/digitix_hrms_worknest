@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@hrms/lib/prisma";
 import { requireAuth, apiSuccess, apiError, createAuditLog } from "@hrms/lib/api-utils";
-import { canManageWorkSchedules } from "@hrms/lib/permissions";
+import { canAccessWorkSchedules } from "@hrms/lib/permissions";
+import { canManageEmployeeWorkSchedule } from "@hrms/lib/work-schedule-access";
 import { workScheduleEntrySchema } from "@hrms/lib/validations";
 import { createWorkScheduleEntry, getWorkScheduleHistory } from "@hrms/lib/work-schedule";
 
@@ -9,13 +9,18 @@ export async function GET(request: NextRequest) {
   const { error, user } = await requireAuth();
   if (error || !user) return error;
 
-  if (!canManageWorkSchedules(user.role)) {
+  if (!canAccessWorkSchedules(user.role)) {
     return apiError("Forbidden", 403);
   }
 
   const userId = request.nextUrl.searchParams.get("userId");
   if (!userId) {
     return apiError("userId is required", 400);
+  }
+
+  const allowed = await canManageEmployeeWorkSchedule(user.role, user.id, userId);
+  if (!allowed) {
+    return apiError("Forbidden", 403);
   }
 
   const history = await getWorkScheduleHistory(userId);
@@ -26,7 +31,7 @@ export async function POST(request: NextRequest) {
   const { error, user } = await requireAuth();
   if (error || !user) return error;
 
-  if (!canManageWorkSchedules(user.role)) {
+  if (!canAccessWorkSchedules(user.role)) {
     return apiError("Forbidden", 403);
   }
 
@@ -38,6 +43,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { userId, effectiveFrom, workStartTime, workEndTime, lateThreshold } = parsed.data;
+    const allowed = await canManageEmployeeWorkSchedule(user.role, user.id, userId);
+    if (!allowed) {
+      return apiError("Forbidden", 403);
+    }
 
     const startMinutes =
       parseInt(workStartTime.split(":")[0], 10) * 60 +

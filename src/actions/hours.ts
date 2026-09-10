@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { hoursByWorkType } from "@/lib/data";
 import { ensureCatalog } from "@/lib/catalog";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
-import { ActionError, STAFF_ROLES, assertRole, requireUser } from "@/lib/permissions";
+import { ActionError, STAFF_ROLES, assertRole, isAdminLike, requireUser } from "@/lib/permissions";
 import { isInactiveStatus } from "@/lib/project-status";
 
 function parseDate(value?: string | null) {
@@ -44,9 +44,8 @@ export async function addHours(formData: FormData) {
     return { error: "Hours cannot be logged on a closed or cancelled project." };
   }
 
-  if (user.role === Role.EMPLOYEE) {
-    const assigned = project.assignments.some((row) => row.employeeId === user.id);
-    if (!assigned) return { error: "You can only log hours on assigned projects." };
+  if (user.role === Role.MANAGER && project.managerId !== user.id) {
+    return { error: "You can only log hours on your team's projects." };
   }
 
   const employeeId =
@@ -56,6 +55,17 @@ export async function addHours(formData: FormData) {
       where: { id: employeeId, role: Role.EMPLOYEE, active: true },
     });
     if (!employee) return { error: "Select a valid employee." };
+  }
+
+  if (user.role === Role.MANAGER && employeeId !== user.id) {
+    const onTeam = await prisma.projectAssignment.findFirst({
+      where: {
+        employeeId,
+        project: { managerId: user.id, status: { notIn: ["CLOSE", "CANCEL"] } },
+      },
+      select: { id: true },
+    });
+    if (!onTeam) return { error: "You can only log hours for your team." };
   }
 
   if (taskId) {
@@ -109,8 +119,14 @@ export async function addHours(formData: FormData) {
 export async function reviewHours(entryId: string) {
   const user = await requireUser();
   assertRole(user, STAFF_ROLES);
-  const entry = await prisma.timeEntry.findUnique({ where: { id: entryId } });
+  const entry = await prisma.timeEntry.findUnique({
+    where: { id: entryId },
+    include: { project: { select: { managerId: true } } },
+  });
   if (!entry) throw new ActionError("Entry not found.");
+  if (!isAdminLike(user.role) && entry.project.managerId !== user.id) {
+    throw new ActionError("You can only review your team's hours.");
+  }
   await prisma.timeEntry.update({
     where: { id: entryId },
     data: { status: "REVIEWED", reviewedById: user.id },

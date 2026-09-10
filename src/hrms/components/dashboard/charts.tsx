@@ -15,9 +15,19 @@ import {
   PieChart,
   Pie,
   Cell,
+  ComposedChart,
+  Line,
+  Legend,
 } from "recharts";
 
-const COLORS = ["#0693e3", "#9b51e0", "#00d084", "#ff6900", "#fcb900", "#8ed1fc"];
+const CHART_TOOLTIP = {
+  backgroundColor: "var(--paper-card)",
+  border: "1px solid var(--line)",
+  borderRadius: "12px",
+  color: "var(--ink)",
+};
+
+const COLORS = ["#0b6e6a", "#15202e", "#c47b1a", "#085753", "#1d2b3d", "#3cb8b1"];
 
 interface ChartCardProps {
   title: string;
@@ -28,15 +38,16 @@ interface ChartCardProps {
 export function ChartCard({ title, children, delay = 0 }: ChartCardProps) {
   return (
     <motion.div
+      className="h-full"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
     >
-      <Card glass>
+      <Card glass className="flex h-full flex-col">
         <CardHeader>
           <CardTitle className="text-base font-semibold">{title}</CardTitle>
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        <CardContent className="flex flex-1 flex-col">{children}</CardContent>
       </Card>
     </motion.div>
   );
@@ -53,23 +64,67 @@ export function AttendanceTrendChart({ data }: AttendanceTrendChartProps) {
         <AreaChart data={data}>
           <defs>
             <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#0693e3" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#0693e3" stopOpacity={0} />
+              <stop offset="5%" stopColor="#0b6e6a" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#0b6e6a" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="month" className="text-xs" />
           <YAxis className="text-xs" />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "12px",
-            }}
-          />
-          <Area type="monotone" dataKey="present" stroke="#0693e3" fill="url(#colorPresent)" strokeWidth={2} />
-          <Area type="monotone" dataKey="late" stroke="#ff6900" fill="transparent" strokeWidth={2} />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Area type="monotone" dataKey="present" stroke="#0b6e6a" fill="url(#colorPresent)" strokeWidth={2} />
+          <Area type="monotone" dataKey="late" stroke="#c47b1a" fill="transparent" strokeWidth={2} />
         </AreaChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+interface AttendanceLeaveTrendChartProps {
+  attendance: { month: string; present: number; absent: number; late: number }[];
+  leave: { month: string; approved: number; rejected: number; pending: number }[];
+}
+
+export function AttendanceLeaveTrendChart({
+  attendance,
+  leave,
+}: AttendanceLeaveTrendChartProps) {
+  const leaveByMonth = Object.fromEntries(leave.map((row) => [row.month, row]));
+  const data = attendance.map((row) => ({
+    month: row.month,
+    present: row.present,
+    late: row.late,
+    approved: leaveByMonth[row.month]?.approved ?? 0,
+    pending: leaveByMonth[row.month]?.pending ?? 0,
+  }));
+
+  return (
+    <ChartCard title="Attendance & leave">
+      <ResponsiveContainer width="100%" height={280}>
+        <ComposedChart data={data}>
+          <defs>
+            <linearGradient id="colorPresentMerged" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#0b6e6a" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#0b6e6a" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis dataKey="month" className="text-xs" />
+          <YAxis className="text-xs" />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Legend />
+          <Area
+            type="monotone"
+            dataKey="present"
+            name="Present"
+            stroke="#0b6e6a"
+            fill="url(#colorPresentMerged)"
+            strokeWidth={2}
+          />
+          <Line type="monotone" dataKey="late" name="Late" stroke="#c47b1a" strokeWidth={2} dot={false} />
+          <Bar dataKey="approved" name="Leave approved" fill="#15202e" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="pending" name="Leave pending" fill="#3cb8b1" radius={[4, 4, 0, 0]} />
+        </ComposedChart>
       </ResponsiveContainer>
     </ChartCard>
   );
@@ -87,16 +142,10 @@ export function LeaveTrendChart({ data }: LeaveTrendChartProps) {
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="month" className="text-xs" />
           <YAxis className="text-xs" />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "12px",
-            }}
-          />
-          <Bar dataKey="approved" fill="#00d084" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="pending" fill="#fcb900" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="rejected" fill="#ef4444" radius={[4, 4, 0, 0]} />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Bar dataKey="approved" fill="#0b6e6a" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="pending" fill="#c47b1a" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="rejected" fill="#b42318" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>
@@ -109,7 +158,7 @@ interface DepartmentChartProps {
 
 export function DepartmentChart({ data }: DepartmentChartProps) {
   return (
-    <ChartCard title="Department Wise Employees">
+    <ChartCard title="Employees by department">
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie
@@ -126,16 +175,10 @@ export function DepartmentChart({ data }: DepartmentChartProps) {
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "12px",
-            }}
-          />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
         </PieChart>
       </ResponsiveContainer>
-      <div className="flex flex-wrap justify-center gap-3 mt-2">
+      <div className="mt-2 flex flex-wrap justify-center gap-3">
         {data.map((item, index) => (
           <div key={item.name} className="flex items-center gap-1.5 text-xs">
             <div
@@ -162,14 +205,8 @@ export function MonthlyLeaveChart({ data }: MonthlyLeaveChartProps) {
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis type="number" className="text-xs" />
           <YAxis dataKey="type" type="category" className="text-xs" width={100} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "12px",
-            }}
-          />
-          <Bar dataKey="days" fill="#9b51e0" radius={[0, 4, 4, 0]} />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Bar dataKey="days" fill="#15202e" radius={[0, 4, 4, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>

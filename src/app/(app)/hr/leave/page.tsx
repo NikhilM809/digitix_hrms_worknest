@@ -48,7 +48,7 @@ import {
   canEditLeaveBalance,
   canBulkImportLeave,
 } from "@hrms/lib/permissions";
-import { apiFetchArray } from "@hrms/lib/client-api";
+import { apiFetchArray, hrmsApiUrl } from "@hrms/lib/client-api";
 import { ExcelImportDialog } from "@hrms/components/admin/excel-import-dialog";
 
 interface LeaveType {
@@ -117,7 +117,6 @@ function ApplyLeaveForm({ leaveTypes }: { leaveTypes: LeaveType[] }) {
     register,
     handleSubmit,
     control,
-    watch,
     reset,
     formState: { errors },
   } = useForm<LeaveApplicationInput>({
@@ -193,15 +192,15 @@ function ApplyLeaveForm({ leaveTypes }: { leaveTypes: LeaveType[] }) {
             <Label htmlFor="attachment">Supporting Document (optional)</Label>
             <Input
               id="attachment"
-              type="url"
-              placeholder="Paste document URL (required for Sick Leave)"
+              type="text"
+              placeholder="Paste a document URL if you have one"
               {...register("attachment")}
             />
             {errors.attachment && (
               <p className="text-sm text-destructive">{errors.attachment.message}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Required for leave types that need medical or supporting documents.
+              Optional for all leave types, including Sick Leave.
             </p>
           </div>
 
@@ -245,9 +244,11 @@ function ApplyLeaveForm({ leaveTypes }: { leaveTypes: LeaveType[] }) {
 function AdminApplyLeaveForm({
   leaveTypes,
   employees,
+  teamOnly,
 }: {
   leaveTypes: LeaveType[];
   employees: EmployeeOption[];
+  teamOnly?: boolean;
 }) {
   const queryClient = useQueryClient();
 
@@ -284,7 +285,11 @@ function AdminApplyLeaveForm({
     <Card glass>
       <CardHeader>
         <CardTitle>Apply Leave on Behalf</CardTitle>
-        <CardDescription>Submit a leave request for an employee (including back dates)</CardDescription>
+        <CardDescription>
+          {teamOnly
+            ? "Submit a leave request for a direct report"
+            : "Submit a leave request for an employee (including back dates)"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
@@ -572,7 +577,7 @@ export default function LeavePage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold tracking-tight">Leave Management</h1>
+        <h1 className="font-display text-3xl tracking-tight text-ink">Leave</h1>
         <p className="text-muted-foreground mt-1">
           Apply for leave, track requests, and manage approvals
         </p>
@@ -630,7 +635,11 @@ export default function LeavePage() {
             {typesLoading ? (
               <Skeleton className="h-96 rounded-2xl" />
             ) : visibleLeaveTypes.length > 0 ? (
-              <AdminApplyLeaveForm leaveTypes={visibleLeaveTypes} employees={employees} />
+              <AdminApplyLeaveForm
+                leaveTypes={visibleLeaveTypes}
+                employees={employees.filter((employee) => employee.id !== userId)}
+                teamOnly={role === "MANAGER"}
+              />
             ) : (
               <EmptyState
                 icon={CalendarDays}
@@ -705,7 +714,9 @@ export default function LeavePage() {
                       size="sm"
                       onClick={() =>
                         window.open(
-                          `/api/leave/balance/bulk?template=true&year=${balanceData?.year ?? new Date().getFullYear()}`,
+                          hrmsApiUrl(
+                            `/api/leave/balance/bulk?template=true&year=${balanceData?.year ?? new Date().getFullYear()}`,
+                          ),
                           "_blank"
                         )
                       }
@@ -718,7 +729,9 @@ export default function LeavePage() {
                       size="sm"
                       onClick={() =>
                         window.open(
-                          `/api/leave/balance/bulk?year=${balanceData?.year ?? new Date().getFullYear()}`,
+                          hrmsApiUrl(
+                            `/api/leave/balance/bulk?year=${balanceData?.year ?? new Date().getFullYear()}`,
+                          ),
                           "_blank"
                         )
                       }

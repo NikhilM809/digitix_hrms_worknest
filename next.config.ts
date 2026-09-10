@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "20mb",
     },
   },
+  async redirects() {
+    return [{ source: "/hr/dashboard", destination: "/dashboard", permanent: false }];
+  },
 };
 
 export default nextConfig;

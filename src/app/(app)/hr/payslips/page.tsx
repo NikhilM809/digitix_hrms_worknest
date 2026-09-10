@@ -286,7 +286,7 @@ export default function PayslipsPage() {
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
             <FileText className="h-7 w-7 text-brand-600" />
             Payslips
           </h1>

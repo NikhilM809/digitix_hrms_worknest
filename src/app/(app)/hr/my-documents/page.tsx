@@ -53,7 +53,7 @@ export default function MyDocumentsPage() {
       className="space-y-6 max-w-3xl"
     >
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
           <FolderOpen className="h-7 w-7 text-brand-600" />
           My Documents
         </h1>

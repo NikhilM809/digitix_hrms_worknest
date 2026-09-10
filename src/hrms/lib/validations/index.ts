@@ -108,7 +108,12 @@ export const leaveApplicationSchema = z
     fromDate: z.string().min(1, "From date is required"),
     toDate: z.string().min(1, "To date is required"),
     reason: z.string().min(10, "Reason must be at least 10 characters"),
-    attachment: z.string().optional(),
+    attachment: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal(""))
+      .transform((v) => (v ? v : undefined)),
     emergencyContact: z.string().optional(),
   })
   .refine(
@@ -136,7 +141,12 @@ export const adminLeaveApplicationSchema = z
     fromDate: z.string().min(1, "From date is required"),
     toDate: z.string().min(1, "To date is required"),
     reason: z.string().min(10, "Reason must be at least 10 characters"),
-    attachment: z.string().optional(),
+    attachment: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal(""))
+      .transform((v) => (v ? v : undefined)),
     emergencyContact: z.string().optional(),
   })
   .refine(
@@ -346,6 +356,30 @@ export const attendanceCheckInSchema = z.object({
   notes: z.string().optional(),
   lateReason: z.string().optional(),
 });
+
+export const manualAttendanceSchema = z.object({
+  userId: z.string().min(1, "Employee is required"),
+  action: z.enum(["check-in", "check-out"]),
+  timestamp: z.string().min(1, "Timestamp is required"),
+  notes: z.string().optional(),
+  lateReason: z.string().optional(),
+  isLate: z.boolean().optional(),
+  mode: z.enum(["record", "update"]).optional().default("record"),
+});
+
+export const manualAttendanceUpdateSchema = z
+  .object({
+    userId: z.string().min(1, "Employee is required"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    checkIn: z.string().optional(),
+    checkOut: z.string().optional(),
+    notes: z.string().optional(),
+    lateReason: z.string().optional(),
+    isLate: z.boolean().optional(),
+  })
+  .refine((data) => data.checkIn || data.checkOut || data.isLate !== undefined, {
+    message: "Provide check-in/check-out time or late flag to update",
+  });
 
 export const assignManagerSchema = z.object({
   userId: z.string().min(1, "Employee is required"),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSession as useNextSession } from "next-auth/react";
 import { useSession } from "@hrms/lib/hrms-session";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -84,10 +85,11 @@ function formatTimeFromISO(iso: string) {
 
 export default function AttendancePage() {
   const { data: session } = useSession();
+  const { data: nextSession } = useNextSession();
   const queryClient = useQueryClient();
   const now = new Date();
   const todayStr = formatLocalDate(now);
-  const userId = session?.user?.id;
+  const userId = session?.user?.id ?? nextSession?.user?.hrmsUserId;
   const role = session?.user?.role as RoleName | undefined;
   const canViewLate = role ? canViewLateAttendance(role) : false;
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
@@ -196,7 +198,7 @@ export default function AttendancePage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
+        <h1 className="font-display text-3xl tracking-tight text-ink">Attendance</h1>
         <p className="text-muted-foreground mt-1">
           Track your daily check-in/out and view attendance history
         </p>
@@ -209,7 +211,7 @@ export default function AttendancePage() {
           className="lg:col-span-2"
         >
           <Card glass className="overflow-hidden">
-            <div className="gradient-bg p-6 text-white">
+            <div className="bg-navy p-6 text-white">
               <p className="text-sm text-white/80">Today&apos;s Status</p>
               <p className="text-3xl font-bold mt-1">
                 {todayLoading

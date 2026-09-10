@@ -9,6 +9,9 @@ import {
 import { attendanceCheckInSchema } from "@hrms/lib/validations";
 import { getWorkScheduleForUserOnDate } from "@hrms/lib/work-schedule";
 import { canViewLateAttendance } from "@hrms/lib/permissions";
+import { calculateWorkingHours } from "@hrms/lib/attendance-hours";
+import { autoCloseForgottenCheckouts } from "@hrms/lib/forgotten-checkout";
+import { getCompanyTimezone } from "@hrms/lib/company-timezone";
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -143,6 +146,7 @@ export async function POST(request: Request) {
     const { action, notes, lateReason } = parsed.data;
     const today = startOfDay();
     const now = new Date();
+    const timeZone = await getCompanyTimezone();
 
     const onLeave = await prisma.leaveRequest.findFirst({
       where: {
@@ -171,6 +175,8 @@ export async function POST(request: Request) {
       if (existing?.checkIn) {
         return apiError("Already checked in today", 400);
       }
+
+      await autoCloseForgottenCheckouts(user.id, now, timeZone, "check-in");
 
       const workStart = parseTimeToDate(workStartTime, today);
       const lateCutoff = new Date(workStart.getTime() + lateThreshold * 60 * 1000);
@@ -226,8 +232,12 @@ export async function POST(request: Request) {
       return apiError("Already checked out today", 400);
     }
 
-    const workingHours =
-      (now.getTime() - new Date(existing.checkIn).getTime()) / (1000 * 60 * 60);
+    const workingHours = calculateWorkingHours(
+      new Date(existing.checkIn),
+      now,
+      today,
+      timeZone,
+    );
 
     const checkoutSchedule = await getWorkScheduleForUserOnDate(user.id, today);
     const workEndTime = checkoutSchedule.workEndTime;
@@ -241,7 +251,7 @@ export async function POST(request: Request) {
       where: { id: existing.id },
       data: {
         checkOut: now,
-        workingHours: Math.round(workingHours * 100) / 100,
+        workingHours,
         overtimeHours: Math.round(overtimeHours * 100) / 100,
         notes: notes || existing.notes,
       },

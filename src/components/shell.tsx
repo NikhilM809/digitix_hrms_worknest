@@ -27,8 +27,11 @@ import {
   Briefcase,
   GitBranch,
   UsersRound,
+  CircleUser,
+  SlidersHorizontal,
+  ScrollText,
+  UserCheck,
   Clock,
-  Shield,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Role } from "@prisma/client";
@@ -39,82 +42,146 @@ import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { APP_NAME, APP_TAGLINE, ROLE_LABEL } from "@/lib/constants";
+import { APP_NAME, APP_TAGLINE, HRMS_ROLE_LABEL, ROLE_LABEL } from "@/lib/constants";
+import {
+  canAccessCompanySettings,
+  canAccessDepartments,
+  canAccessKra,
+  canAccessReports,
+  canAccessWorkSchedules,
+  canManageEmployeeDocuments,
+  canManageEmployees,
+  canManageManualAttendance,
+  canManageOrgHierarchy,
+  canViewTeam,
+} from "@hrms/lib/permissions";
 import { formatDate } from "@/lib/format";
 import { BrandLogo } from "@/components/logo";
 
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
+type NavGroup = { title?: string; items: NavItem[] };
 
-const ADMIN_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/hours", label: "Hours", icon: Timer },
-  { href: "/employees", label: "Employees", icon: Users },
-  { href: "/reports", label: "Reports", icon: ChartColumn },
-  { href: "/billing", label: "Billing", icon: Wallet },
-  { href: "/closed", label: "Closed Projects", icon: Archive },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+function buildNav(role: Role, hrmsRole?: RoleName, orgVisible = true): NavGroup[] {
+  const staff = role === "ADMIN" || role === "SENIOR_MANAGER" || role === "MANAGER";
+  const adminLike = role === "ADMIN" || role === "SENIOR_MANAGER";
+  const linked = Boolean(hrmsRole);
 
-const MANAGER_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/team", label: "My Team", icon: Users },
-  { href: "/hours", label: "Hours", icon: Timer },
-  { href: "/closed", label: "Closed Projects", icon: Archive },
-];
+  const overview: NavItem[] = [];
+  if (role !== "EMPLOYEE") {
+    overview.push({ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard });
+  }
 
-const EMPLOYEE_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/my-projects", label: "My Projects", icon: FolderKanban },
-  { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
-  { href: "/my-hours", label: "My Hours", icon: Timer },
-];
+  const people: NavItem[] = [];
+  if (hrmsRole && canManageEmployees(hrmsRole)) {
+    people.push({ href: "/hr/employees", label: "Employees", icon: Users });
+  } else if (!linked && role === "ADMIN") {
+    people.push({ href: "/employees", label: "People", icon: Users });
+  }
+  if (hrmsRole) {
+    if (hrmsRole !== "ADMIN") {
+      people.push({ href: "/hr/attendance", label: "Attendance", icon: CalendarCheck });
+    }
+    if (canManageManualAttendance(hrmsRole)) {
+      people.push({ href: "/hr/attendance/manage", label: "Manage attendance", icon: UserCheck });
+    }
+    people.push(
+      { href: "/hr/leave", label: "Leave", icon: CalendarDays },
+      { href: "/hr/payslips", label: "Payslips", icon: FileText },
+    );
+    if (canAccessReports(hrmsRole)) {
+      people.push({ href: "/hr/reports", label: "People reports", icon: ChartColumn });
+    }
+    if (canAccessKra(hrmsRole)) {
+      people.push({ href: "/hr/kra", label: "KRA", icon: Target });
+    }
+    people.push({ href: "/hr/my-documents", label: "My documents", icon: FolderOpen });
+    if (canManageEmployeeDocuments(hrmsRole)) {
+      people.push({ href: "/hr/employee-documents", label: "Employee files", icon: FolderArchive });
+    }
+    if (canViewTeam(hrmsRole) && orgVisible) {
+      people.push({ href: "/hr/my-team", label: "My team", icon: UsersRound });
+    }
+    people.push(
+      { href: "/hr/notifications", label: "Notifications", icon: Bell },
+      { href: "/hr/profile", label: "Profile", icon: CircleUser },
+    );
+  }
 
-type HrmsNavItem = NavItem & { roles: RoleName[] };
+  const work: NavItem[] = [];
+  if (staff) {
+    work.push(
+      { href: "/projects", label: "Projects", icon: FolderKanban },
+      { href: "/hours", label: "Hours", icon: Timer },
+      { href: "/closed", label: "Closed projects", icon: Archive },
+    );
+  }
+  if (role === "MANAGER") {
+    work.push({ href: "/team", label: "Team hours", icon: Users });
+  }
+  if (role === "EMPLOYEE") {
+    work.push(
+      { href: "/my-projects", label: "My projects", icon: FolderKanban },
+      { href: "/my-tasks", label: "My tasks", icon: ClipboardList },
+      { href: "/my-hours", label: "My hours", icon: Timer },
+    );
+  }
+  if (adminLike) {
+    work.push(
+      { href: "/billing", label: "Billing", icon: Wallet },
+      { href: "/reports", label: "Reports", icon: ChartColumn },
+    );
+  }
 
-const HRMS_NAV: HrmsNavItem[] = [
-  { href: "/hr/dashboard", label: "HR Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "HR", "MANAGER"] },
-  { href: "/hr/employees", label: "HR Employees", icon: Users, roles: ["ADMIN", "HR", "MANAGER"] },
-  { href: "/hr/employee-documents", label: "Employee Documents", icon: FolderArchive, roles: ["ADMIN", "HR"] },
-  { href: "/hr/attendance", label: "Attendance", icon: CalendarCheck, roles: ["HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/leave", label: "Leave", icon: CalendarDays, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/payslips", label: "Payslips", icon: FileText, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/kra", label: "KRA", icon: Target, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/my-documents", label: "My Documents", icon: FolderOpen, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/organization", label: "Organization", icon: Network, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/work-schedules", label: "Work Schedules", icon: Clock, roles: ["ADMIN"] },
-  { href: "/hr/departments", label: "Departments", icon: Building2, roles: ["ADMIN"] },
-  { href: "/hr/designations", label: "Designations", icon: Briefcase, roles: ["ADMIN"] },
-  { href: "/hr/org-hierarchy", label: "Manage Hierarchy", icon: GitBranch, roles: ["ADMIN"] },
-  { href: "/hr/my-team", label: "HR My Team", icon: UsersRound, roles: ["ADMIN", "HR", "MANAGER"] },
-  { href: "/hr/reports", label: "HR Reports", icon: ChartColumn, roles: ["ADMIN", "MANAGER"] },
-  { href: "/hr/policies", label: "Policies", icon: Shield, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/profile", label: "HR Profile", icon: Users, roles: ["ADMIN", "HR", "MANAGER", "EMPLOYEE"] },
-  { href: "/hr/settings", label: "HR Settings", icon: Settings, roles: ["ADMIN"] },
-];
+  const company: NavItem[] = [];
+  if (hrmsRole) {
+    if (orgVisible) {
+      company.push({ href: "/hr/organization", label: "Organization", icon: Network });
+    }
+    company.push({ href: "/hr/policies", label: "Policies", icon: ScrollText });
+  }
+  if (hrmsRole && canAccessWorkSchedules(hrmsRole)) {
+    company.push({ href: "/hr/work-schedules", label: "Work schedules", icon: Clock });
+  }
+  if (hrmsRole && canAccessDepartments(hrmsRole)) {
+    company.push({ href: "/hr/departments", label: "Departments", icon: Building2 });
+  }
+  if (hrmsRole && canAccessCompanySettings(hrmsRole)) {
+    company.push({ href: "/hr/designations", label: "Designations", icon: Briefcase });
+    if (canManageOrgHierarchy(hrmsRole)) {
+      company.push({ href: "/hr/org-hierarchy", label: "Hierarchy", icon: GitBranch });
+    }
+    company.push({ href: "/hr/settings", label: "Company", icon: Settings });
+  }
+  if (adminLike) {
+    company.push({ href: "/settings", label: "Workspace", icon: SlidersHorizontal });
+  }
 
-function hrmsNavFor(role?: RoleName) {
-  if (!role) return [];
-  return HRMS_NAV.filter((item) => item.roles.includes(role));
+  return [
+    ...(overview.length ? [{ items: overview }] : []),
+    ...(people.length ? [{ title: "People", items: people }] : []),
+    ...(work.length ? [{ title: "Work", items: work }] : []),
+    ...(company.length ? [{ title: "Company", items: company }] : []),
+  ];
 }
 
-function NavLinks({
-  items,
-  pathname,
-}: {
-  items: NavItem[];
-  pathname: string;
-}) {
+function navActive(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (!pathname.startsWith(`${href}/`)) return false;
+  if (href === "/hr/attendance" && pathname.startsWith("/hr/attendance/manage")) return false;
+  return true;
+}
+
+function NavLinks({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
     <>
       {items.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;
+        const active = navActive(pathname, item.href);
         return (
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm",
               active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white",
@@ -127,12 +194,6 @@ function NavLinks({
       })}
     </>
   );
-}
-
-function navFor(role: Role) {
-  if (role === "ADMIN" || role === "SENIOR_MANAGER") return ADMIN_NAV;
-  if (role === "MANAGER") return MANAGER_NAV;
-  return EMPLOYEE_NAV;
 }
 
 function SignOutButton() {
@@ -151,15 +212,17 @@ function SignOutButton() {
 export function AppShell({
   user,
   notifications,
+  orgVisible = true,
   children,
 }: {
   user: { name: string; email: string; role: Role; hrmsRole?: RoleName };
   notifications: { id: string; title: string; message: string; href: string | null; read: boolean; createdAt: Date }[];
+  orgVisible?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const items = navFor(user.role);
-  const hrmsItems = hrmsNavFor(user.hrmsRole);
+  const groups = buildNav(user.role, user.hrmsRole, orgVisible);
+  const flatItems = groups.flatMap((group) => group.items);
   const unread = notifications.filter((item) => !item.read).length;
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -174,16 +237,19 @@ export function AppShell({
             <p className="mt-0.5 text-xs text-white/60">{APP_TAGLINE}</p>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3">
-          <NavLinks items={items} pathname={pathname} />
-          {hrmsItems.length > 0 ? (
-            <>
-              <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wide text-white/40">
-                HRMS
-              </p>
-              <NavLinks items={hrmsItems} pathname={pathname} />
-            </>
-          ) : null}
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-4">
+          {groups.map((group, index) => (
+            <div key={group.title ?? `group-${index}`}>
+              {group.title ? (
+                <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                  {group.title}
+                </p>
+              ) : null}
+              <div className="space-y-1">
+                <NavLinks items={group.items} pathname={pathname} />
+              </div>
+            </div>
+          ))}
         </nav>
         <form action={logoutAction} className="p-4">
           <SignOutButton />
@@ -228,11 +294,29 @@ export function AppShell({
                     ) : (
                       notifications.map((item) => (
                         <form key={item.id} action={markNotificationRead.bind(null, item.id)}>
-                          <button className="block w-full px-3 py-3 text-left hover:bg-black/5 dark:hover:bg-white/5">
-                            <p className="text-sm font-medium">{item.title}</p>
-                            <p className="text-xs text-muted">{item.message}</p>
-                            <p className="mt-1 text-[11px] text-muted">{formatDate(item.createdAt)}</p>
-                          </button>
+                          {item.href ? (
+                            <Link
+                              href={item.href}
+                              prefetch={false}
+                              className="block w-full px-3 py-3 text-left hover:bg-black/5 dark:hover:bg-white/5"
+                              onClick={() => {
+                                if (!item.read) {
+                                  void markNotificationRead(item.id);
+                                }
+                                setOpen(false);
+                              }}
+                            >
+                              <p className="text-sm font-medium">{item.title}</p>
+                              <p className="text-xs text-muted">{item.message}</p>
+                              <p className="mt-1 text-[11px] text-muted">{formatDate(item.createdAt)}</p>
+                            </Link>
+                          ) : (
+                            <button className="block w-full px-3 py-3 text-left hover:bg-black/5 dark:hover:bg-white/5">
+                              <p className="text-sm font-medium">{item.title}</p>
+                              <p className="text-xs text-muted">{item.message}</p>
+                              <p className="mt-1 text-[11px] text-muted">{formatDate(item.createdAt)}</p>
+                            </button>
+                          )}
                         </form>
                       ))
                     )}
@@ -242,18 +326,21 @@ export function AppShell({
             </div>
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium">{user.name}</p>
-              <p className="text-xs text-muted">{ROLE_LABEL[user.role]}</p>
+              <p className="text-xs text-muted">
+                {user.hrmsRole ? HRMS_ROLE_LABEL[user.hrmsRole] : ROLE_LABEL[user.role]}
+              </p>
             </div>
           </div>
         </header>
         <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2 lg:hidden">
-          {[...items, ...hrmsItems].map((item) => (
+          {flatItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={cn(
                 "whitespace-nowrap rounded-full px-3 py-1 text-sm",
-                pathname.startsWith(item.href) ? "bg-navy text-white" : "bg-black/5 dark:bg-white/5",
+                navActive(pathname, item.href) ? "bg-navy text-white" : "bg-black/5 dark:bg-white/5",
               )}
             >
               {item.label}

@@ -158,7 +158,7 @@ export async function GET() {
       isManager(user.role)
         ? prisma.auditLog.findMany({
             orderBy: { createdAt: "desc" },
-            take: 10,
+            take: 8,
             include: {
               user: { select: { firstName: true, lastName: true } },
             },
@@ -166,7 +166,7 @@ export async function GET() {
         : prisma.auditLog.findMany({
             where: { userId: user.id },
             orderBy: { createdAt: "desc" },
-            take: 10,
+            take: 8,
             include: {
               user: { select: { firstName: true, lastName: true } },
             },

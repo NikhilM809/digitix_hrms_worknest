@@ -20,6 +20,7 @@ import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { formatDate, formatHours, formatMoney } from "@/lib/format";
 import { STAFF_ROLES, canSeeFinance, isAdminLike, requireRole } from "@/lib/permissions";
 import { asFormAction } from "@/lib/utils";
+import { listAssignablePeople } from "@/lib/people-sync";
 import { notFound } from "next/navigation";
 
 function iso(value?: Date | null) {
@@ -57,11 +58,7 @@ export default async function ProjectDetailPage({
 
   const actual = sumHours(project.timeEntries);
   const breakdown = hoursByWorkType(project.timeEntries);
-  const people = await prisma.user.findMany({
-    where: { active: true },
-    select: { id: true, name: true, role: true },
-    orderBy: { name: "asc" },
-  });
+  const people = await listAssignablePeople();
   const currencies = finance ? await getActiveCurrencies() : [];
   const [clients, workTypes] = await Promise.all([getActiveClients(), getActiveWorkTypes()]);
   const employees = people.filter((p) => p.role === "EMPLOYEE");

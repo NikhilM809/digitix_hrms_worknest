@@ -23,6 +23,7 @@ import {
   Search,
   Pencil,
   UserX,
+  KeyRound,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -30,6 +31,8 @@ import {
   ArrowUpDown,
   Loader2,
   Users,
+  Download,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -60,11 +63,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@hrms/components/ui/select";
-import { canManageEmployees, isAdminOrHr } from "@hrms/lib/permissions";
-import { apiFetch, apiFetchArray } from "@hrms/lib/client-api";
+import { canManageEmployees, isAdminOrHr, canExportEmployees, canBulkImportEmployees } from "@hrms/lib/permissions";
+import { apiFetch, apiFetchArray, hrmsApiUrl } from "@hrms/lib/client-api";
 import { employeeSchema, type EmployeeInput } from "@hrms/lib/validations";
 import { cn } from "@hrms/lib/utils";
 import { ProfileAvatarUpload } from "@hrms/components/profile/profile-avatar-upload";
+import { ExcelImportDialog } from "@hrms/components/admin/excel-import-dialog";
 
 const EMPTY_EMPLOYEES: Employee[] = [];
 
@@ -142,6 +146,15 @@ interface EmployeeRoleOption {
   isActive: boolean;
 }
 
+interface PasswordResetRequest {
+  id: string;
+  requestedAt: string;
+  userId: string;
+  email: string;
+  employeeId: string;
+  name: string;
+}
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -165,6 +178,8 @@ export default function EmployeesPage() {
     ? isAdminOrHr(session.user.role)
     : false;
   const isAdmin = session?.user?.role === "ADMIN";
+  const canExport = isAdmin && canExportEmployees("ADMIN");
+  const canImport = isAdmin && canBulkImportEmployees("ADMIN");
   const canEditSalary = canCreateEmployee;
   const canManage = session?.user?.role
     ? canManageEmployees(session.user.role)
@@ -177,6 +192,7 @@ export default function EmployeesPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [employmentFilter, setEmploymentFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -190,6 +206,11 @@ export default function EmployeesPage() {
     orgRoleId: roleFilter,
     status: statusFilter,
     employmentType: employmentFilter,
+  };
+
+  const downloadEmployees = (template: boolean) => {
+    const url = template ? "/api/employees/bulk?template=true" : "/api/employees/bulk";
+    window.open(hrmsApiUrl(url), "_blank");
   };
 
   const { data: employees = EMPTY_EMPLOYEES, isLoading } = useQuery({
@@ -280,6 +301,35 @@ export default function EmployeesPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const { data: passwordResetRequests = [] } = useQuery({
+    queryKey: ["password-reset-requests"],
+    queryFn: () => apiFetchArray<PasswordResetRequest>("/api/password-reset-requests"),
+    enabled: status === "authenticated" && isAdmin,
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ password: string }>(`/api/employees/${id}/reset-password`, {
+        method: "POST",
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["password-reset-requests"] });
+      toast.success(`Password reset to ${data.password}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  function confirmResetPassword(employee: { id: string; firstName: string; lastName: string }) {
+    if (
+      confirm(
+        `Reset ${employee.firstName} ${employee.lastName}'s password to the default? They will need to change it after signing in.`,
+      )
+    ) {
+      resetPasswordMutation.mutate(employee.id);
+    }
+  }
 
   const openCreate = () => {
     setEditingEmployee(null);
@@ -413,6 +463,17 @@ export default function EmployeesPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Reset password to default"
+                        onClick={() => confirmResetPassword(row.original)}
+                        disabled={resetPasswordMutation.isPending}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </Button>
+                    )}
                     {row.original.status === "ACTIVE" && (
                       <Button
                         variant="ghost"
@@ -437,7 +498,7 @@ export default function EmployeesPage() {
             ]
           : []),
       ]),
-    [columnHelper, canCreateEmployee, deactivateMutation]
+    [columnHelper, canCreateEmployee, isAdmin, deactivateMutation, resetPasswordMutation],
   );
 
   const table = useTable({
@@ -464,7 +525,7 @@ export default function EmployeesPage() {
         <Users className="h-16 w-16 text-muted-foreground/60 mb-4" />
         <h1 className="text-2xl font-bold">Access Denied</h1>
         <p className="text-muted-foreground mt-2">
-          Employee management is available to administrators and managers only.
+          Employee management is available to administrators only.
         </p>
       </div>
     );
@@ -478,21 +539,80 @@ export default function EmployeesPage() {
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Users className="h-7 w-7 text-brand-600" />
-            Employees
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your workforce directory
-          </p>
+          <h1 className="font-display text-3xl tracking-tight text-ink">Employees</h1>
+          <p className="mt-1 text-sm text-muted">The directory used for leave, projects, and assignments.</p>
         </div>
-        {canCreateEmployee && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Add Employee
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canExport && (
+            <>
+              <Button variant="outline" onClick={() => downloadEmployees(true)}>
+                <Download className="h-4 w-4" />
+                Template
+              </Button>
+              <Button variant="outline" onClick={() => downloadEmployees(false)}>
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            </>
+          )}
+          {canImport && (
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import Excel
+            </Button>
+          )}
+          {canCreateEmployee && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Add Employee
+            </Button>
+          )}
+        </div>
       </div>
+
+      {isAdmin && passwordResetRequests.length > 0 && (
+        <Card glass>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <KeyRound className="h-4 w-4" />
+              Password reset requests
+            </CardTitle>
+            <CardDescription>
+              Employees asked for a default password reset from the login page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {passwordResetRequests.map((request) => (
+              <div
+                key={request.id}
+                className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-medium">{request.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {request.employeeId} · {request.email} ·{" "}
+                    {format(new Date(request.requestedAt), "MMM d, yyyy h:mm a")}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    confirmResetPassword({
+                      id: request.userId,
+                      firstName: request.name.split(" ")[0] ?? request.name,
+                      lastName: request.name.split(" ").slice(1).join(" "),
+                    })
+                  }
+                  disabled={resetPasswordMutation.isPending}
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Reset to default
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card glass>
         <CardHeader className="pb-4">
@@ -1135,6 +1255,17 @@ export default function EmployeesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {canImport && (
+        <ExcelImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          title="Import Employees"
+          description="Upload Excel to create or update employees. For updates, only Employee ID is required — include just the columns you want to change (e.g. Employee ID + Joining Date). Dates accept YYYY-MM-DD, DD/MM/YYYY, or Excel date cells."
+          uploadUrl="/api/employees/bulk"
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["employees"] })}
+        />
+      )}
     </motion.div>
   );
 }

@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { FileText, Plus, Trash2, Loader2 } from "lucide-react";
+import { FileText, Pencil, Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@hrms/components/ui/button";
 import { Input } from "@hrms/components/ui/input";
@@ -47,8 +47,9 @@ export default function PoliciesPage() {
   const canView = role ? canViewPolicies(role) : false;
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<CompanyPolicy | null>(null);
 
-  const { data: policies = [], isLoading } = useQuery({
+  const { data: policies = [], isLoading, isError, error } = useQuery({
     queryKey: ["policies"],
     queryFn: () => apiFetchArray<CompanyPolicy>("/api/policies"),
     enabled: status === "authenticated" && canView,
@@ -59,6 +60,24 @@ export default function PoliciesPage() {
     defaultValues: { title: "", content: "" },
   });
 
+  function closeDialog() {
+    setDialogOpen(false);
+    setEditing(null);
+    form.reset({ title: "", content: "" });
+  }
+
+  function openCreate() {
+    setEditing(null);
+    form.reset({ title: "", content: "" });
+    setDialogOpen(true);
+  }
+
+  function openEdit(policy: CompanyPolicy) {
+    setEditing(policy);
+    form.reset({ title: policy.title, content: policy.content, sortOrder: policy.sortOrder });
+    setDialogOpen(true);
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: CompanyPolicyInput) =>
       apiFetch<CompanyPolicy>("/api/policies", {
@@ -68,8 +87,21 @@ export default function PoliciesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["policies"] });
       toast.success("Policy added");
-      setDialogOpen(false);
-      form.reset();
+      closeDialog();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CompanyPolicyInput }) =>
+      apiFetch<CompanyPolicy>(`/api/policies/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: data.title, content: data.content }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["policies"] });
+      toast.success("Policy updated");
+      closeDialog();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -83,6 +115,16 @@ export default function PoliciesPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const saving = createMutation.isPending || updateMutation.isPending;
+
+  function onSubmit(data: CompanyPolicyInput) {
+    if (editing) {
+      updateMutation.mutate({ id: editing.id, data });
+      return;
+    }
+    createMutation.mutate(data);
+  }
 
   if (status === "loading") {
     return <Skeleton className="h-96 w-full rounded-2xl" />;
@@ -106,18 +148,18 @@ export default function PoliciesPage() {
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
             <FileText className="h-7 w-7 text-brand-600" />
             Company Policies
           </h1>
           <p className="text-muted-foreground mt-1">
             {canManage
-              ? "Manage organization policies displayed to employees"
+              ? "Add, edit, or remove organization policies displayed to employees"
               : "View company policies and guidelines"}
           </p>
         </div>
         {canManage && (
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
             Add Policy
           </Button>
@@ -126,6 +168,15 @@ export default function PoliciesPage() {
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
+      ) : isError ? (
+        <Card glass>
+          <CardContent className="py-12 text-center">
+            <p className="text-destructive font-medium">Failed to load policies</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              {error instanceof Error ? error.message : "Please try again."}
+            </p>
+          </CardContent>
+        </Card>
       ) : policies.length === 0 ? (
         <Card glass>
           <CardContent className="py-12 text-center text-muted-foreground">
@@ -142,18 +193,29 @@ export default function PoliciesPage() {
                 <div className="flex items-start justify-between gap-4">
                   <CardTitle className="text-base">{policy.title}</CardTitle>
                   {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive shrink-0"
-                      onClick={() => {
-                        if (confirm(`Remove policy "${policy.title}"?`)) {
-                          deleteMutation.mutate(policy.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEdit(policy)}
+                        aria-label={`Edit ${policy.title}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm(`Remove policy "${policy.title}"?`)) {
+                            deleteMutation.mutate(policy.id);
+                          }
+                        }}
+                        aria-label={`Remove ${policy.title}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
                 </div>
                 {!canManage && (
@@ -171,16 +233,23 @@ export default function PoliciesPage() {
       )}
 
       {canManage && (
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            if (open) setDialogOpen(true);
+            else closeDialog();
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Policy</DialogTitle>
-              <DialogDescription>Create a new company policy</DialogDescription>
+              <DialogTitle>{editing ? "Edit Policy" : "Add Policy"}</DialogTitle>
+              <DialogDescription>
+                {editing
+                  ? "Update this company policy"
+                  : "Create a new company policy"}
+              </DialogDescription>
             </DialogHeader>
-            <form
-              onSubmit={form.handleSubmit((data) => createMutation.mutate(data))}
-              className="space-y-4"
-            >
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Policy Title</Label>
                 <Input id="title" {...form.register("title")} />
@@ -200,12 +269,12 @@ export default function PoliciesPage() {
                 )}
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Save Policy
+                <Button type="submit" disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {editing ? "Update Policy" : "Save Policy"}
                 </Button>
               </div>
             </form>

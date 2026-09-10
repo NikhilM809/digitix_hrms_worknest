@@ -6,22 +6,20 @@ import { prisma } from "@/lib/db";
 import { sumHours } from "@/lib/data";
 import { formatDate, formatHours } from "@/lib/format";
 import { requireRole } from "@/lib/permissions";
-import { visibleProjectsWhere } from "@/lib/project-access";
-import { isInactiveStatus } from "@/lib/project-status";
 import { getActiveWorkTypes } from "@/lib/catalog";
 
 export default async function MyHoursPage() {
   const user = await requireRole("EMPLOYEE");
   const now = new Date();
-  const [entries, assignments, tasks, workTypes] = await Promise.all([
+  const [entries, projects, tasks, workTypes] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { employeeId: user.id },
       include: { project: true, task: true },
       orderBy: { date: "desc" },
     }),
-    prisma.projectAssignment.findMany({
-      where: { employeeId: user.id, project: visibleProjectsWhere("EMPLOYEE") },
-      include: { project: true },
+    prisma.project.findMany({
+      where: { status: { notIn: ["CLOSE", "CANCEL"] } },
+      orderBy: { name: "asc" },
     }),
     prisma.task.findMany({ where: { assignedEmployeeId: user.id } }),
     getActiveWorkTypes(),
@@ -44,9 +42,11 @@ export default async function MyHoursPage() {
       <Card className="mb-6 p-6">
         <h2 className="mb-4 font-display text-xl">+ Add hours</h2>
         <AddHoursForm
-          projects={assignments
-            .filter((a) => !isInactiveStatus(a.project.status))
-            .map((a) => ({ id: a.project.id, name: a.project.name, code: a.project.code }))}
+          projects={projects.map((project) => ({
+            id: project.id,
+            name: project.name,
+            code: project.code,
+          }))}
           tasks={tasks.map((t) => ({ id: t.id, name: t.name, projectId: t.projectId }))}
           workTypes={workTypes}
         />

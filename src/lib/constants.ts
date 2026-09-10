@@ -5,9 +5,10 @@ import {
   HourStatus,
   InvoiceStatus,
 } from "@prisma/client";
+import type { RoleName } from "@prisma/hrms-client";
 
-export const APP_NAME = "Worknest";
-export const APP_TAGLINE = "Where work comes together.";
+export const APP_NAME = "WorkNest";
+export const APP_TAGLINE = "Your people. Your projects. One workspace.";
 
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   BID: "Bid",
@@ -87,6 +88,13 @@ export const BILLING_STATUS_LABEL = {
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
   SENIOR_MANAGER: "Senior Manager",
+  MANAGER: "Manager",
+  EMPLOYEE: "Employee",
+};
+
+export const HRMS_ROLE_LABEL: Record<RoleName, string> = {
+  ADMIN: "Admin",
+  HR: "HR",
   MANAGER: "Manager",
   EMPLOYEE: "Employee",
 };

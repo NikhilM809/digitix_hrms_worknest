@@ -22,10 +22,13 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Settings" description="Company, tax, and bank details used on invoices." />
+      <PageHeader
+        title="Workspace"
+        description="Invoicing, catalogs, and project defaults for this workspace."
+      />
       <form action={asFormAction(saveSettings)} className="grid gap-6">
         <Card className="p-6">
-          <h2 className="mb-4 font-display text-xl">Company</h2>
+          <h2 className="mb-4 font-display text-xl">Billing profile</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Company name">
               <Input name="companyName" defaultValue={settings.companyName} required />

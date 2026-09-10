@@ -1,19 +1,26 @@
-import Link from "next/link";
-import { endOfMonth, endOfWeek, isSameDay, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+﻿import Link from "next/link";
+import { redirect } from "next/navigation";
+import { isSameDay, startOfDay } from "date-fns";
+import { CalendarDays, ClipboardCheck, Users, Cake } from "lucide-react";
 import { FocusList, type FocusItem } from "@/components/focus-list";
-import { AlertPills, TaskBadge } from "@/components/status";
-import { Button, Card, PageHeader, Select, StatCard } from "@/components/ui";
-import { PROJECT_STATUS_LABEL, TASK_STATUS_LABEL } from "@/lib/constants";
+import { TaskBadge } from "@/components/status";
+import { Button, Card, Select, StatCard } from "@/components/ui";
+import { PROJECT_STATUS_LABEL } from "@/lib/constants";
 import { CurrencyTotals } from "@/components/currency-totals";
-import { ProjectStatusForm } from "@/components/project-status-form";
 import { prisma } from "@/lib/db";
 import { getSettings, sumHours } from "@/lib/data";
 import { ensureCurrencies } from "@/lib/currency";
-import { getActiveClients } from "@/lib/catalog";
+import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { totalsByCurrency, remainingByCurrency } from "@/lib/finance";
 import { formatDate, formatHours, isEtaSoon, isOverdue } from "@/lib/format";
+import { auth } from "@/auth";
 import { isAdminLike, requireUser } from "@/lib/permissions";
-import { visibleProjectsWhere } from "@/lib/project-access";
+import { peopleOverviewStats } from "@/lib/people-sync";
+import { PeopleInsights, PeopleRecentActivity } from "@/components/people-insights";
+import { AddHoursForm } from "@/components/hours-form";
+import { HighlightStat, dayGreeting } from "@/components/studio-home";
+import { appHomePath } from "@/lib/home-path";
+import type { RoleName } from "@prisma/hrms-client";
 import { isInactiveStatus } from "@/lib/project-status";
 import { ProjectStatus, TaskStatus } from "@prisma/client";
 
@@ -23,21 +30,46 @@ export default async function DashboardPage({
   searchParams: Promise<{ client?: string }>;
 }) {
   const user = await requireUser();
+  const session = await auth();
   const params = await searchParams;
   const client = String(params.client || "");
-  if (isAdminLike(user.role)) return <AdminDashboard client={client} />;
-  if (user.role === "MANAGER") return <ManagerDashboard userId={user.id} name={user.name} />;
-  return <EmployeeDashboard userId={user.id} name={user.name} />;
+  const peopleLinked = Boolean(session?.user?.hrmsRole);
+  const hrmsRole = session?.user?.hrmsRole;
+  const hrmsUserId = session?.user?.hrmsUserId;
+  if (user.role === "EMPLOYEE") {
+    redirect(appHomePath(user.role, hrmsRole));
+  }
+  if (isAdminLike(user.role)) {
+    return <AdminDashboard client={client} peopleLinked={peopleLinked} name={user.name} />;
+  }
+  return (
+    <ManagerDashboard
+      userId={user.id}
+      name={user.name}
+      peopleLinked={peopleLinked}
+      hrmsUserId={hrmsUserId}
+      hrmsRole={hrmsRole}
+    />
+  );
 }
 
-async function AdminDashboard({ client }: { client: string }) {
-  const [settings, clients, projects] = await Promise.all([
+async function AdminDashboard({
+  client,
+  peopleLinked,
+  name,
+}: {
+  client: string;
+  peopleLinked: boolean;
+  name: string;
+}) {
+  const [settings, clients, projects, peopleStats] = await Promise.all([
     getSettings(),
     getActiveClients(),
     prisma.project.findMany({
       where: client ? { clientName: client } : {},
       include: { timeEntries: { select: { hours: true } }, invoices: true, currency: true },
     }),
+    peopleLinked ? peopleOverviewStats() : Promise.resolve(null),
   ]);
   await ensureCurrencies();
   const byStatus = (status: ProjectStatus) => projects.filter((p) => p.status === status).length;
@@ -53,18 +85,53 @@ async function AdminDashboard({ client }: { client: string }) {
     (i) => i.amount,
   );
   const pendingTotals = remainingByCurrency(valueTotals, billedTotals);
+  const firstName = name.split(" ")[0];
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        description="Projects, hours, and billing at a glance."
-        actions={
-          <Link href="/projects/new">
-            <Button>New project</Button>
-          </Link>
-        }
-      />
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted">Hello {firstName}</p>
+          <h1 className="font-display text-3xl tracking-tight text-ink">{dayGreeting()}</h1>
+        </div>
+        <Link href="/projects/new">
+          <Button>New project</Button>
+        </Link>
+      </div>
+
+      {peopleStats ? (
+        <div className="mb-8 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <HighlightStat
+              label="Employees"
+              value={peopleStats.employees}
+              icon={Users}
+              tone="lilac"
+            />
+            <HighlightStat
+              label="On leave"
+              value={peopleStats.onLeaveToday}
+              icon={CalendarDays}
+              tone="peach"
+            />
+            <HighlightStat
+              label="Pending approvals"
+              value={peopleStats.pendingLeave}
+              icon={ClipboardCheck}
+              tone="mint"
+            />
+            <HighlightStat
+              label="Upcoming events"
+              value={peopleStats.upcomingEvents}
+              icon={Cake}
+              tone="sky"
+            />
+          </div>
+          <PeopleRecentActivity />
+        </div>
+      ) : null}
+
+      <h2 className="mb-3 font-display text-xl text-ink">Projects</h2>
       <form method="get" className="mb-4 flex max-w-sm gap-3">
         <Select name="client" defaultValue={client}>
           <option value="">All clients</option>
@@ -98,6 +165,7 @@ async function AdminDashboard({ client }: { client: string }) {
         <StatCard label="Estimated hours" value={formatHours(estimated)} />
         <StatCard label="Actual hours" value={formatHours(actual)} />
       </div>
+      {peopleLinked ? <PeopleInsights /> : null}
     </div>
   );
 }
@@ -110,18 +178,34 @@ function isDueToday(due: Date | null, status: TaskStatus, now = new Date()) {
   return Boolean(due) && status !== "COMPLETED" && isSameDay(due!, now);
 }
 
-async function ManagerDashboard({ userId, name }: { userId: string; name: string }) {
+async function ManagerDashboard({
+  userId,
+  name,
+  peopleLinked,
+  hrmsUserId,
+  hrmsRole,
+}: {
+  userId: string;
+  name: string;
+  peopleLinked: boolean;
+  hrmsUserId?: string;
+  hrmsRole?: RoleName;
+}) {
   const settings = await getSettings();
   const now = new Date();
-  const projects = await prisma.project.findMany({
-    where: { status: { notIn: ["CLOSE", "CANCEL"] } },
-    include: {
-      timeEntries: { select: { hours: true, employeeId: true } },
-      assignments: { include: { employee: true } },
-      tasks: { include: { assignedEmployee: true } },
-    },
-    orderBy: { eta: "asc" },
-  });
+  const [projects, peopleStats, workTypes] = await Promise.all([
+    prisma.project.findMany({
+      where: { status: { notIn: ["CLOSE", "CANCEL"] } },
+      include: {
+        timeEntries: { select: { hours: true, employeeId: true } },
+        assignments: { include: { employee: true } },
+        tasks: { include: { assignedEmployee: true } },
+      },
+      orderBy: { eta: "asc" },
+    }),
+    peopleLinked ? peopleOverviewStats({ hrmsUserId, hrmsRole }) : Promise.resolve(null),
+    getActiveWorkTypes(),
+  ]);
   const mine = projects.filter((project) => project.managerId === userId);
   const overdue = mine.filter((p) => isOverdue(p.eta, p.status)).length;
   const dueSoon = mine.filter((p) => isEtaSoon(p.eta, settings.etaWarningDays, p.status)).length;
@@ -183,7 +267,12 @@ async function ManagerDashboard({ userId, name }: { userId: string; name: string
 
   const todayWork = [...dueToday, ...inProgress.filter((row) => !dueToday.includes(row))].slice(0, 10);
 
-  const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE", active: true } });
+  const teamIds = [...new Set(mine.flatMap((project) => project.assignments.map((row) => row.employeeId)))];
+  const employees = teamIds.length
+    ? await prisma.user.findMany({
+        where: { role: "EMPLOYEE", active: true, id: { in: teamIds } },
+      })
+    : [];
   const workload = employees.map((employee) => {
     const assigned = mine.filter((p) => p.assignments.some((a) => a.employeeId === employee.id));
     const actual = assigned.reduce(
@@ -200,18 +289,106 @@ async function ManagerDashboard({ userId, name }: { userId: string; name: string
     };
   });
 
+  const firstName = name.split(" ")[0];
+  const timesheetProjects = mine.map((project) => ({
+    id: project.id,
+    name: project.name,
+    code: project.code,
+  }));
+  const timesheetTasks = mine.flatMap((project) =>
+    project.tasks.map((task) => ({ id: task.id, name: task.name, projectId: project.id })),
+  );
+
   return (
     <div>
-      <PageHeader
-        title={`Today, ${name.split(" ")[0]}`}
-        description="What your team needs to do. Project cost is not shown."
-        actions={
-          <Link href="/hours">
-            <Button variant="outline">Add hours</Button>
-          </Link>
-        }
-      />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6">
+        <p className="text-sm text-muted">Hello {firstName}</p>
+        <h1 className="font-display text-3xl tracking-tight text-ink">{dayGreeting()}</h1>
+      </div>
+
+      <div className="mb-8 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(16rem,0.8fr)]">
+        {peopleStats ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <HighlightStat
+              label="Team members"
+              value={peopleStats.employees}
+              icon={Users}
+              tone="lilac"
+            />
+            <HighlightStat
+              label="On leave"
+              value={peopleStats.onLeaveToday}
+              icon={CalendarDays}
+              tone="peach"
+            />
+            <HighlightStat
+              label="Pending approvals"
+              value={peopleStats.pendingLeave}
+              icon={ClipboardCheck}
+              tone="mint"
+            />
+            <HighlightStat
+              label="Upcoming events"
+              value={peopleStats.upcomingEvents}
+              icon={Cake}
+              tone="sky"
+            />
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatCard label="Your projects" value={mine.length} />
+            <StatCard label="Due today" value={dueToday.length} />
+            <StatCard label="Blocked" value={blocked.length} warn={blocked.length > 0} />
+            <StatCard label="Overdue" value={overdue + overdueTasks.length} warn={overdue + overdueTasks.length > 0} />
+          </div>
+        )}
+        <Card className="p-5">
+          <h2 className="mb-4 font-display text-xl text-ink">Time sheet</h2>
+          <AddHoursForm
+            projects={timesheetProjects}
+            tasks={timesheetTasks}
+            workTypes={workTypes}
+          />
+        </Card>
+        {peopleLinked ? <PeopleRecentActivity /> : <div />}
+      </div>
+
+      {peopleStats?.latestLeave ? (
+        <div className="mb-8 grid gap-6 lg:grid-cols-2">
+          <Card className="p-5">
+            <h2 className="font-display text-xl text-ink">Team leave</h2>
+            <div className="mt-4 flex items-start gap-4">
+              <div className="rounded-2xl bg-[#F8D7E8] px-4 py-3 text-center dark:bg-[#4A2A38]">
+                <p className="font-display text-2xl text-ink">
+                  {peopleStats.latestLeave.fromDate.getDate()}
+                </p>
+                <p className="text-xs uppercase text-muted">
+                  {peopleStats.latestLeave.fromDate.toLocaleString("en-IN", { month: "short" })}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-ink">{peopleStats.latestLeave.name}</p>
+                <p className="text-xs text-muted">Type: {peopleStats.latestLeave.type}</p>
+                <p className="mt-2 text-sm text-muted">{peopleStats.latestLeave.reason}</p>
+              </div>
+            </div>
+          </Card>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatCard label="Present today" value={peopleStats.presentToday} />
+            <StatCard label="Leave pending" value={peopleStats.pendingLeave} warn={peopleStats.pendingLeave > 0} />
+            <StatCard label="Due today" value={dueToday.length} />
+            <StatCard
+              label="Overdue"
+              value={overdue + overdueTasks.length}
+              warn={overdue + overdueTasks.length > 0}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {peopleLinked ? <PeopleInsights /> : null}
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Your projects" value={mine.length} hint={`${projects.length} active in the studio`} />
         <StatCard label="Due today" value={dueToday.length} />
         <StatCard label="Blocked" value={blocked.length} warn={blocked.length > 0} />
@@ -231,7 +408,7 @@ async function ManagerDashboard({ userId, name }: { userId: string; name: string
         />
         <Card>
           <div className="border-b border-line px-5 py-4">
-            <h2 className="font-display text-xl">Team — do this today</h2>
+            <h2 className="font-display text-xl">Team: do this today</h2>
           </div>
           {todayWork.length === 0 ? (
             <p className="px-5 py-8 text-sm text-muted">
@@ -286,145 +463,3 @@ async function ManagerDashboard({ userId, name }: { userId: string; name: string
   );
 }
 
-async function EmployeeDashboard({ userId, name }: { userId: string; name: string }) {
-  const now = new Date();
-  const assignments = await prisma.projectAssignment.findMany({
-    where: { employeeId: userId, project: visibleProjectsWhere("EMPLOYEE") },
-    include: {
-      project: {
-        include: {
-          statusChangedBy: true,
-          tasks: { where: { assignedEmployeeId: userId } },
-          timeEntries: { where: { employeeId: userId } },
-        },
-      },
-    },
-  });
-  const visibleAssignments = assignments;
-  const tasks = visibleAssignments.flatMap((a) => a.project.tasks);
-  const openTasks = tasks.filter((task) => task.status !== "COMPLETED");
-  const entries = await prisma.timeEntry.findMany({ where: { employeeId: userId } });
-  const today = entries.filter((e) => isSameDay(e.date, now));
-  const week = entries.filter(
-    (e) => e.date >= startOfWeek(now, { weekStartsOn: 1 }) && e.date <= endOfWeek(now, { weekStartsOn: 1 }),
-  );
-  const month = entries.filter((e) => e.date >= startOfMonth(now) && e.date <= endOfMonth(now));
-  const settings = await getSettings();
-
-  const ranked = [...openTasks].sort((a, b) => {
-    const rank = (task: (typeof openTasks)[number]) => {
-      if (isTaskOverdue(task.dueDate, task.status, now)) return 0;
-      if (task.status === "BLOCKED") return 1;
-      if (isDueToday(task.dueDate, task.status, now)) return 2;
-      if (task.status === "IN_PROGRESS") return 3;
-      return 4;
-    };
-    return rank(a) - rank(b);
-  });
-
-  const focus: FocusItem[] = ranked.slice(0, 8).map((task) => {
-    const project = assignments.find((row) => row.project.id === task.projectId)?.project;
-    const overdueTask = isTaskOverdue(task.dueDate, task.status, now);
-    return {
-      id: task.id,
-      href: "/my-tasks",
-      title: task.name,
-      meta: `${project?.name ?? "Project"}${task.dueDate ? ` · due ${formatDate(task.dueDate)}` : ""}${overdueTask ? " · overdue" : ""}`,
-      status: task.status,
-      tone: overdueTask ? "danger" : task.status === "BLOCKED" ? "gold" : "default",
-    };
-  });
-
-  return (
-    <div>
-      <PageHeader
-        title={`Today, ${name.split(" ")[0]}`}
-        description="Your work for the day — tasks first."
-      />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Do now"
-          value={
-            openTasks.filter(
-              (t) =>
-                isTaskOverdue(t.dueDate, t.status, now) ||
-                isDueToday(t.dueDate, t.status, now) ||
-                t.status === "IN_PROGRESS",
-            ).length
-          }
-        />
-        <StatCard label="Open tasks" value={openTasks.length} />
-        <StatCard
-          label="Hours today"
-          value={`${formatHours(sumHours(today))} h`}
-          hint={`${formatHours(sumHours(week))} this week`}
-        />
-        <StatCard label="This month" value={`${formatHours(sumHours(month))} h`} />
-      </div>
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <FocusList
-          title="Do this today"
-          empty="No open tasks. Check My Tasks if work is available to pick up."
-          items={focus}
-          action={
-            <Link href="/my-tasks" className="text-sm text-teal">
-              All tasks
-            </Link>
-          }
-        />
-        <Card>
-          <div className="border-b border-line px-5 py-4">
-            <h2 className="font-display text-xl">My projects</h2>
-          </div>
-          {visibleAssignments.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted">You are not assigned to an active project yet.</p>
-          ) : (
-            <div className="divide-y divide-line">
-              {visibleAssignments.map((row) => {
-                const next = row.project.tasks.find((task) => task.status !== "COMPLETED");
-                return (
-                  <div key={row.id} className="px-5 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{row.project.name}</p>
-                        <p className="text-xs text-muted">
-                          {row.project.clientName} · ETA {formatDate(row.project.eta)}
-                        </p>
-                      </div>
-                      <ProjectStatusForm
-                        compact
-                        projectId={row.project.id}
-                        status={row.project.status}
-                        changedByName={row.project.statusChangedBy?.name}
-                        changedAt={row.project.statusChangedAt}
-                      />
-                    </div>
-                    <p className="mt-2 text-sm">
-                      {next ? (
-                        <>
-                          Next: {next.name}{" "}
-                          <span className="text-xs text-muted">({TASK_STATUS_LABEL[next.status]})</span>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted">No open task on this project</span>
-                      )}
-                    </p>
-                    <div className="mt-2">
-                      <AlertPills
-                        eta={row.project.eta}
-                        status={row.project.status}
-                        actual={sumHours(row.project.timeEntries)}
-                        estimated={row.project.estimatedHours}
-                        warningDays={settings.etaWarningDays}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-}

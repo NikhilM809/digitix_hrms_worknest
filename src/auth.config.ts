@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
+import { appHomePath } from "@/lib/home-path";
 
 type Role = "ADMIN" | "SENIOR_MANAGER" | "MANAGER" | "EMPLOYEE";
-
 const ADMIN_LIKE: Role[] = ["ADMIN", "SENIOR_MANAGER"];
 
 const ADMIN_PREFIXES = [
@@ -34,18 +34,24 @@ export const authConfig = {
       const path = request.nextUrl.pathname;
       const isLoggedIn = Boolean(auth?.user);
       const role = (auth?.user as { role?: Role } | undefined)?.role;
+      const hrmsRole = (auth?.user as { hrmsRole?: string } | undefined)?.hrmsRole;
+      const home = appHomePath(role, hrmsRole);
 
-      if (path.startsWith("/login")) {
+      if (path.startsWith("/login") || path.startsWith("/forgot-password")) {
         if (isLoggedIn) {
-          return Response.redirect(new URL("/dashboard", request.nextUrl));
+          return Response.redirect(new URL(home, request.nextUrl));
         }
         return true;
       }
 
       if (!isLoggedIn) return false;
 
+      if (role === "EMPLOYEE" && (path === "/dashboard" || path.startsWith("/dashboard/"))) {
+        return Response.redirect(new URL(home, request.nextUrl));
+      }
+
       if (startsWithAny(path, ADMIN_PREFIXES) && (!role || !ADMIN_LIKE.includes(role))) {
-        return Response.redirect(new URL("/dashboard", request.nextUrl));
+        return Response.redirect(new URL(home, request.nextUrl));
       }
 
       if (
@@ -56,7 +62,7 @@ export const authConfig = {
       }
 
       if (startsWithAny(path, STAFF_PREFIXES) && role === "EMPLOYEE") {
-        return Response.redirect(new URL("/dashboard", request.nextUrl));
+        return Response.redirect(new URL(home, request.nextUrl));
       }
 
       if (startsWithAny(path, EMPLOYEE_PREFIXES) && role === "EMPLOYEE") {

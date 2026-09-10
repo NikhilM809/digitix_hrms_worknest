@@ -46,7 +46,7 @@ export async function POST(request: Request) {
           type: "COMPANY_ANNOUNCEMENT",
           title: parsed.data.title,
           message: parsed.data.content.substring(0, 200),
-          link: "/hr/dashboard",
+          link: "/dashboard",
         })
       )
     );

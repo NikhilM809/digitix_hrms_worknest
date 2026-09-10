@@ -30,7 +30,7 @@ export function canViewAllSalaries(role: RoleName) {
 }
 
 export function canManageEmployees(role: RoleName) {
-  return isAdminOrHr(role) || role === "MANAGER";
+  return isAdminOrHr(role);
 }
 
 export function canManagePolicies(role: RoleName) {
@@ -62,7 +62,7 @@ export function canEditLeaveBalance(role: RoleName) {
 }
 
 export function canApplyLeaveOnBehalf(role: RoleName) {
-  return isAdminOrHr(role);
+  return role === "ADMIN" || role === "HR" || role === "MANAGER";
 }
 
 export function canUploadPayslip(role: RoleName) {
@@ -90,11 +90,31 @@ export function canAccessReports(role: RoleName) {
 }
 
 export function canGeneratePayslip(role: RoleName) {
-  return role === "ADMIN";
+  return isAdminOrHr(role);
 }
 
 export function canManageWorkSchedules(role: RoleName) {
   return role === "ADMIN";
+}
+
+export function canAccessWorkSchedules(role: RoleName) {
+  return canManageWorkSchedules(role) || isManagerRole(role);
+}
+
+export function canBulkManageWorkSchedules(role: RoleName) {
+  return canManageWorkSchedules(role);
+}
+
+export function canBulkImportEmployees(role: RoleName) {
+  return role === "ADMIN";
+}
+
+export function canExportEmployees(role: RoleName) {
+  return role === "ADMIN";
+}
+
+export function canManageManualAttendance(role: RoleName) {
+  return role === "ADMIN" || role === "HR" || role === "MANAGER";
 }
 
 export function canBulkImportLeave(role: RoleName) {

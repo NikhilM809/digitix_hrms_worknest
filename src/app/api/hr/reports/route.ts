@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@hrms/lib/prisma";
 import { requireAuth, apiSuccess, apiError } from "@hrms/lib/api-utils";
+import {
+  accumulateUserPeriodHours,
+  expandToMonthBounds,
+  expandToWeekBounds,
+  monthKeyInZone,
+  resolveWorkingHours,
+  weekKeyInZone,
+} from "@hrms/lib/attendance-hours";
+import { getCompanyTimezone } from "@hrms/lib/company-timezone";
 
 async function getManagerUserFilter(userId: string) {
   const team = await prisma.user.findMany({
@@ -8,6 +17,15 @@ async function getManagerUserFilter(userId: string) {
     select: { id: true },
   });
   return { in: [userId, ...team.map((t) => t.id)] };
+}
+
+function paddedDateRange(from: string, to: string) {
+  const start = new Date(from);
+  start.setUTCDate(start.getUTCDate() - 31);
+  const end = new Date(to);
+  end.setUTCDate(end.getUTCDate() + 31);
+  end.setUTCHours(23, 59, 59, 999);
+  return { gte: start, lte: end };
 }
 
 export async function GET(req: NextRequest) {
@@ -19,6 +37,8 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type") ?? "attendance";
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+    const employeeId = searchParams.get("employeeId");
+    const lateOnly = searchParams.get("late") === "true";
 
     const dateFilter =
       from && to
@@ -31,12 +51,24 @@ export async function GET(req: NextRequest) {
     const managerUserFilter =
       user!.role === "MANAGER" ? await getManagerUserFilter(user!.id) : undefined;
 
+    if (employeeId && managerUserFilter && !managerUserFilter.in.includes(employeeId)) {
+      return apiSuccess([]);
+    }
+
+    const userIdFilter = employeeId
+      ? employeeId
+      : managerUserFilter
+        ? managerUserFilter
+        : undefined;
+
     switch (type) {
       case "attendance": {
+        const timeZone = await getCompanyTimezone();
         const records = await prisma.attendance.findMany({
           where: {
-            ...(dateFilter ? { date: dateFilter } : {}),
-            ...(managerUserFilter ? { userId: managerUserFilter } : {}),
+            ...(from && to ? { date: paddedDateRange(from, to) } : {}),
+            ...(userIdFilter ? { userId: userIdFilter } : {}),
+            ...(lateOnly ? { isLate: true } : {}),
           },
           include: {
             user: {
@@ -49,11 +81,16 @@ export async function GET(req: NextRequest) {
             },
           },
           orderBy: { date: "desc" },
-          take: 500,
         });
 
+        const { weekly, monthly } = accumulateUserPeriodHours(records, timeZone);
+        const visible = dateFilter
+          ? records.filter((r) => r.date >= dateFilter.gte && r.date <= dateFilter.lte)
+          : records;
+        const rows = visible.slice(0, 500);
+
         return apiSuccess(
-          records.map((r) => ({
+          rows.map((r) => ({
             date: r.date.toISOString().split("T")[0],
             employeeId: r.user.employeeId,
             employeeName: `${r.user.firstName} ${r.user.lastName}`,
@@ -61,7 +98,17 @@ export async function GET(req: NextRequest) {
             status: r.status,
             checkIn: r.checkIn?.toISOString() ?? "-",
             checkOut: r.checkOut?.toISOString() ?? "-",
-            workingHours: r.workingHours ?? 0,
+            workingHours: resolveWorkingHours(
+              r.date,
+              r.checkIn,
+              r.checkOut,
+              r.workingHours,
+              timeZone,
+            ),
+            weeklyHours:
+              weekly.get(`${r.userId}:${weekKeyInZone(r.date, timeZone)}`) ?? 0,
+            monthlyHours:
+              monthly.get(`${r.userId}:${monthKeyInZone(r.date, timeZone)}`) ?? 0,
             isLate: r.isLate,
           }))
         );
@@ -70,7 +117,7 @@ export async function GET(req: NextRequest) {
       case "leave": {
         const records = await prisma.leaveRequest.findMany({
           where: {
-            ...(managerUserFilter ? { userId: managerUserFilter } : {}),
+            ...(userIdFilter ? { userId: userIdFilter } : {}),
             ...(dateFilter
               ? {
                   fromDate: { lte: dateFilter.lte },
@@ -110,9 +157,11 @@ export async function GET(req: NextRequest) {
 
       case "employee": {
         const where =
-          user!.role === "MANAGER"
-            ? { OR: [{ managerId: user!.id }, { id: user!.id }] }
-            : {};
+          employeeId
+            ? { id: employeeId }
+            : user!.role === "MANAGER"
+              ? { OR: [{ managerId: user!.id }, { id: user!.id }] }
+              : {};
 
         const records = await prisma.user.findMany({
           where,
@@ -122,6 +171,34 @@ export async function GET(req: NextRequest) {
           },
           orderBy: { createdAt: "desc" },
         });
+
+        const timeZone = await getCompanyTimezone();
+        const reference = to ? new Date(to) : new Date();
+        const weekKey = weekKeyInZone(reference, timeZone);
+        const monthKey = monthKeyInZone(reference, timeZone);
+        const weekBounds = expandToWeekBounds(weekKey);
+        const monthBounds = expandToMonthBounds(monthKey);
+        const aggStart =
+          weekBounds.start < monthBounds.start ? weekBounds.start : monthBounds.start;
+        const aggEnd = new Date(
+          Math.max(weekBounds.end.getTime(), monthBounds.end.getTime()),
+        );
+        aggEnd.setUTCHours(23, 59, 59, 999);
+
+        const attendance = await prisma.attendance.findMany({
+          where: {
+            userId: { in: records.map((r) => r.id) },
+            date: { gte: aggStart, lte: aggEnd },
+          },
+          select: {
+            userId: true,
+            date: true,
+            checkIn: true,
+            checkOut: true,
+            workingHours: true,
+          },
+        });
+        const { weekly, monthly } = accumulateUserPeriodHours(attendance, timeZone);
 
         return apiSuccess(
           records.map((r) => ({
@@ -134,6 +211,8 @@ export async function GET(req: NextRequest) {
             department: r.department?.name ?? "-",
             designation: r.designation?.name ?? "-",
             joiningDate: r.joiningDate.toISOString().split("T")[0],
+            weeklyHours: weekly.get(`${r.id}:${weekKey}`) ?? 0,
+            monthlyHours: monthly.get(`${r.id}:${monthKey}`) ?? 0,
           }))
         );
       }

@@ -1,10 +1,13 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import type { JWT } from "next-auth/jwt";
 import { Role } from "@prisma/client";
+import type { RoleName, UserStatus } from "@prisma/hrms-client";
 import { authConfig } from "@/auth.config";
 import { prisma } from "@/lib/db";
 import { prisma as hrmsPrisma } from "@hrms/lib/prisma";
+import { worknestRoleFromHrms } from "@/lib/people-sync";
 
 async function hrmsUserByEmail(email: string) {
   try {
@@ -15,6 +18,50 @@ async function hrmsUserByEmail(email: string) {
     console.error("HRMS lookup failed", error);
     return null;
   }
+}
+
+function hrmsFields(hrmsUser: {
+  id: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  role: RoleName;
+  status: UserStatus;
+  avatar: string | null;
+  departmentId: string | null;
+  mustChangePassword: boolean;
+} | null) {
+  if (!hrmsUser || hrmsUser.status !== "ACTIVE") {
+    return {
+      hrmsUserId: undefined,
+      hrmsEmployeeId: undefined,
+      hrmsFirstName: undefined,
+      hrmsLastName: undefined,
+      hrmsRole: undefined,
+      hrmsAvatar: undefined,
+      hrmsDepartmentId: undefined,
+      hrmsMustChangePassword: undefined,
+    };
+  }
+  return {
+    hrmsUserId: hrmsUser.id,
+    hrmsEmployeeId: hrmsUser.employeeId,
+    hrmsFirstName: hrmsUser.firstName,
+    hrmsLastName: hrmsUser.lastName,
+    hrmsRole: hrmsUser.role,
+    hrmsAvatar: hrmsUser.avatar,
+    hrmsDepartmentId: hrmsUser.departmentId,
+    hrmsMustChangePassword: hrmsUser.mustChangePassword,
+  };
+}
+
+async function enrichTokenWithHrms(token: JWT) {
+  const email = typeof token.email === "string" ? token.email : undefined;
+  if (!email) return token;
+  if (token.hrmsUserId && token.hrmsRole) return token;
+  const hrmsUser = await hrmsUserByEmail(email);
+  Object.assign(token, hrmsFields(hrmsUser));
+  return token;
 }
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
@@ -32,29 +79,41 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         const password = String(credentials.password ?? "");
         if (!email || !password) return null;
 
-        let user = await prisma.user.findUnique({ where: { email } });
-        const hrmsUser = await hrmsUserByEmail(email);
+        let [user, hrmsUser] = await Promise.all([
+          prisma.user.findUnique({ where: { email } }),
+          hrmsUserByEmail(email),
+        ]);
 
-        const worknestValid = user?.active
-          ? await bcrypt.compare(password, user.password)
-          : false;
-        const hrmsValid =
+        const [worknestValid, hrmsValid] = await Promise.all([
+          user?.active ? bcrypt.compare(password, user.password) : Promise.resolve(false),
           hrmsUser?.status === "ACTIVE"
-            ? await bcrypt.compare(password, hrmsUser.password)
-            : false;
+            ? bcrypt.compare(password, hrmsUser.password)
+            : Promise.resolve(false),
+        ]);
 
         if (!worknestValid && !hrmsValid) return null;
 
-        if (!user && hrmsUser && hrmsValid) {
-          user = await prisma.user.create({
-            data: {
-              name: `${hrmsUser.firstName} ${hrmsUser.lastName}`.trim(),
+        if (hrmsUser?.status === "ACTIVE") {
+          const { syncWorknestUserFromHrms } = await import("@/lib/people-sync");
+          if (hrmsValid) {
+            user = await syncWorknestUserFromHrms({
               email,
+              firstName: hrmsUser.firstName,
+              lastName: hrmsUser.lastName,
+              role: hrmsUser.role,
+              status: hrmsUser.status,
               password: hrmsUser.password,
-              role: Role.EMPLOYEE,
-              active: true,
-            },
-          });
+            });
+          } else if (user) {
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                name: `${hrmsUser.firstName} ${hrmsUser.lastName}`.trim() || email,
+                role: worknestRoleFromHrms(hrmsUser.role),
+                active: true,
+              },
+            });
+          }
         }
 
         if (!user || !user.active) return null;
@@ -64,16 +123,29 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
-          hrmsUserId: hrmsUser?.status === "ACTIVE" ? hrmsUser.id : undefined,
-          hrmsEmployeeId: hrmsUser?.employeeId,
-          hrmsFirstName: hrmsUser?.firstName,
-          hrmsLastName: hrmsUser?.lastName,
-          hrmsRole: hrmsUser?.status === "ACTIVE" ? hrmsUser.role : undefined,
-          hrmsAvatar: hrmsUser?.avatar,
-          hrmsDepartmentId: hrmsUser?.departmentId,
-          hrmsMustChangePassword: hrmsUser?.mustChangePassword,
+          ...hrmsFields(hrmsUser),
         };
       },
     }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role as Role;
+        token.name = user.name;
+        token.email = user.email;
+        token.hrmsUserId = user.hrmsUserId;
+        token.hrmsEmployeeId = user.hrmsEmployeeId;
+        token.hrmsFirstName = user.hrmsFirstName;
+        token.hrmsLastName = user.hrmsLastName;
+        token.hrmsRole = user.hrmsRole;
+        token.hrmsAvatar = user.hrmsAvatar;
+        token.hrmsDepartmentId = user.hrmsDepartmentId;
+        token.hrmsMustChangePassword = user.hrmsMustChangePassword;
+      }
+      return enrichTokenWithHrms(token);
+    },
+  },
 });

@@ -26,8 +26,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hrms/components/ui/dialog";
-import { canManageWorkSchedules } from "@hrms/lib/permissions";
-import { apiFetch, apiFetchArray } from "@hrms/lib/client-api";
+import { canAccessWorkSchedules, canManageWorkSchedules } from "@hrms/lib/permissions";
+import { apiFetch, apiFetchArray, hrmsApiUrl } from "@hrms/lib/client-api";
 import { ExcelImportDialog } from "@hrms/components/admin/excel-import-dialog";
 import { formatScheduleRange, formatScheduleTime12h } from "@hrms/lib/work-schedule-client";
 
@@ -61,6 +61,7 @@ interface CompanySettings {
 export default function WorkSchedulesPage() {
   const { data: session } = useSession();
   const role = session?.user?.role;
+  const canAccess = role ? canAccessWorkSchedules(role) : false;
   const canManage = role ? canManageWorkSchedules(role) : false;
   const queryClient = useQueryClient();
 
@@ -76,16 +77,16 @@ export default function WorkSchedulesPage() {
   });
 
   const { data: settings } = useQuery({
-    queryKey: ["company-settings"],
-    queryFn: () => apiFetch<CompanySettings>("/api/settings"),
-    enabled: canManage,
+    queryKey: ["work-schedule-defaults"],
+    queryFn: () => apiFetch<CompanySettings>("/api/work-schedules?defaults=true"),
+    enabled: canAccess,
   });
 
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["employees-schedules"],
     queryFn: () =>
       apiFetchArray<EmployeeSchedule>("/api/work-schedules?list=true"),
-    enabled: canManage,
+    enabled: canAccess,
   });
 
   const { data: history = [], isLoading: historyLoading } = useQuery({
@@ -124,7 +125,7 @@ export default function WorkSchedulesPage() {
     const url = template
       ? "/api/work-schedules?template=true"
       : "/api/work-schedules";
-    window.open(url, "_blank");
+    window.open(hrmsApiUrl(url), "_blank");
   };
 
   const openHistory = (emp: EmployeeSchedule) => {
@@ -146,7 +147,7 @@ export default function WorkSchedulesPage() {
     );
   });
 
-  if (!canManage) {
+  if (!canAccess) {
     return (
       <div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">
         You do not have access to work schedule management.
@@ -162,7 +163,7 @@ export default function WorkSchedulesPage() {
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
             <Clock className="h-7 w-7 text-brand-600" />
             Work Schedules
           </h1>
@@ -170,6 +171,7 @@ export default function WorkSchedulesPage() {
             Manage employee schedules with effective dates and history
           </p>
         </div>
+        {canManage && (
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => download(true)}>
             <Download className="h-4 w-4" />
@@ -184,6 +186,7 @@ export default function WorkSchedulesPage() {
             Import Excel
           </Button>
         </div>
+        )}
       </div>
 
       {settings && (
@@ -425,6 +428,7 @@ export default function WorkSchedulesPage() {
         </DialogContent>
       </Dialog>
 
+      {canManage && (
       <ExcelImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
@@ -435,6 +439,7 @@ export default function WorkSchedulesPage() {
           queryClient.invalidateQueries({ queryKey: ["employees-schedules"] })
         }
       />
+      )}
     </motion.div>
   );
 }

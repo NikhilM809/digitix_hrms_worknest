@@ -164,6 +164,16 @@ export async function POST(req: NextRequest) {
       details: `Created employee ${employee.firstName} ${employee.lastName}`,
     });
 
+    const { syncWorknestUserFromHrms } = await import("@/lib/people-sync");
+    await syncWorknestUserFromHrms({
+      email: employee.email,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      role: employee.role,
+      status: employee.status,
+      password: defaultPassword,
+    }).catch((error) => console.error("Workspace login sync failed", error));
+
     return apiSuccess(employee, 201);
   } catch (err) {
     if (err instanceof Error && err.name === "ZodError") {
