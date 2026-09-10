@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@hrms/*": ["./src/hrms/*"],
+      "@prisma/hrms-client": ["./node_modules/@prisma/hrms-client"]
     }
   },
   "include": [

@@ -24,14 +24,25 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Demo logins
 
-Password for all accounts: `Digitix@123`
+Worknest seed accounts (projects only; no HRMS menu):
 
-| Role | Email |
-| --- | --- |
-| Admin | admin@digitix.local |
-| Senior Manager | asha@digitix.local |
-| Manager | arjun@digitix.local |
-| Employee | john@digitix.local |
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | admin@digitix.local | Digitix@123 |
+| Senior Manager | asha@digitix.local | Digitix@123 |
+| Manager | arjun@digitix.local | Digitix@123 |
+| Employee | john@digitix.local | Digitix@123 |
+
+HRMS seed accounts (same email/password as the HRMS app; also unlocks the HRMS menu):
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | admin@digitixlabs.com | Admin@123 |
+| Admin | priya.sharma@digitixlabs.com | Admin@123 |
+| Manager | manager@digitixlabs.com | Welcome@123 |
+| Employee | nikhil@digitixlabs.com | Welcome@123 |
+| Employee | amit.patel@digitixlabs.com | Welcome@123 |
+| Employee | sneha.gupta@digitixlabs.com | Welcome@123 |
 
 ## What this version covers
 
@@ -44,4 +55,4 @@ Password for all accounts: `Digitix@123`
 - Admin-only financials, sales charts, and billing PDFs
 - Light / dark mode
 
-PostgreSQL is required. HRMS and Worknest stay on separate databases.
+PostgreSQL is required. HRMS and Worknest stay on separate databases (`digitix_hrms` and `digitix_flow`). One Worknest login loads both: Project Management from `digitix_flow`, HRMS from `digitix_hrms`, matched by email.

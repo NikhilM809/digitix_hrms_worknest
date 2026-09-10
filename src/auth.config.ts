@@ -71,6 +71,14 @@ export const authConfig = {
         token.role = (user as { role: Role }).role;
         token.name = user.name;
         token.email = user.email;
+        token.hrmsUserId = user.hrmsUserId;
+        token.hrmsEmployeeId = user.hrmsEmployeeId;
+        token.hrmsFirstName = user.hrmsFirstName;
+        token.hrmsLastName = user.hrmsLastName;
+        token.hrmsRole = user.hrmsRole;
+        token.hrmsAvatar = user.hrmsAvatar;
+        token.hrmsDepartmentId = user.hrmsDepartmentId;
+        token.hrmsMustChangePassword = user.hrmsMustChangePassword;
       }
       return token;
     },
@@ -80,6 +88,14 @@ export const authConfig = {
         session.user.role = token.role as Role;
         session.user.name = (token.name as string) ?? session.user.name;
         session.user.email = (token.email as string) ?? session.user.email;
+        session.user.hrmsUserId = token.hrmsUserId as string | undefined;
+        session.user.hrmsEmployeeId = token.hrmsEmployeeId as string | undefined;
+        session.user.hrmsFirstName = token.hrmsFirstName as string | undefined;
+        session.user.hrmsLastName = token.hrmsLastName as string | undefined;
+        session.user.hrmsRole = token.hrmsRole as typeof session.user.hrmsRole;
+        session.user.hrmsAvatar = token.hrmsAvatar as string | null | undefined;
+        session.user.hrmsDepartmentId = token.hrmsDepartmentId as string | null | undefined;
+        session.user.hrmsMustChangePassword = token.hrmsMustChangePassword as boolean | undefined;
       }
       return session;
     },

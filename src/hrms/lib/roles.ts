@@ -1,0 +1,18 @@
+export {
+  isAdmin,
+  isHr,
+  isAdminOrHr,
+  isManagerRole,
+  canApproveLeave,
+  canManageAllLeaves,
+  canViewAllSalaries,
+  canManageEmployees,
+  canManagePolicies,
+  canEditLeaveBalance,
+  canApplyLeaveOnBehalf,
+  canUploadPayslip,
+  canAccessCompanySettings,
+  canAccessDepartments,
+  canAccessReports,
+  isManager,
+} from "@hrms/lib/permissions";

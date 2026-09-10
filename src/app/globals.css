@@ -12,6 +12,24 @@
   --navy-2: #1d2b3d;
   --gold: #c47b1a;
   --danger: #b42318;
+  --background: #f3efe6;
+  --foreground: #1b2430;
+  --card: #fffcf7;
+  --card-foreground: #1b2430;
+  --primary: #0b6e6a;
+  --primary-foreground: #ffffff;
+  --secondary: #efe8da;
+  --secondary-foreground: #1b2430;
+  --accent: #e4f3f2;
+  --accent-foreground: #085753;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #ddd4c4;
+  --input: #ddd4c4;
+  --ring: #0b6e6a;
+  --muted-foreground: #5b6573;
+  --popover: #fffcf7;
+  --popover-foreground: #1b2430;
 }
 
 .dark {
@@ -26,6 +44,24 @@
   --navy-2: #141b24;
   --gold: #e0a04a;
   --danger: #f97066;
+  --background: #10151c;
+  --foreground: #e8e4db;
+  --card: #171e28;
+  --card-foreground: #e8e4db;
+  --primary: #3cb8b1;
+  --primary-foreground: #10151c;
+  --secondary: #1d2b3d;
+  --secondary-foreground: #e8e4db;
+  --accent: #17302e;
+  --accent-foreground: #3cb8b1;
+  --destructive: #f97066;
+  --destructive-foreground: #10151c;
+  --border: #2a3544;
+  --input: #2a3544;
+  --ring: #3cb8b1;
+  --muted-foreground: #9aa3b0;
+  --popover: #171e28;
+  --popover-foreground: #e8e4db;
 }
 
 @theme inline {
@@ -40,6 +76,27 @@
   --color-navy-2: var(--navy-2);
   --color-gold: var(--gold);
   --color-danger: var(--danger);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-brand-500: var(--teal);
+  --color-brand-600: var(--teal-dark);
+  --color-brand-700: var(--teal-dark);
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
 }

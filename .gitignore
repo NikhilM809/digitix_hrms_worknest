@@ -50,3 +50,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# nested accidental copies of this repo
+/digitix_flow/
+/digitix_flow-1/
