@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { formatDate, formatHours } from "@/lib/format";
 import { TASK_STATUS_LABEL } from "@/lib/constants";
 import { STAFF_ROLES, isAdminLike, requireRole } from "@/lib/permissions";
+import { syncActiveHrmsPeople } from "@/lib/people-sync";
 import { TeamAssignForm } from "@/components/team-assign-form";
 import { Card, PageHeader, Select } from "@/components/ui";
 import { TaskBadge } from "@/components/status";
@@ -15,6 +16,8 @@ export default async function TeamPage({
   const user = await requireRole(...STAFF_ROLES);
   const { employeeId = "", status = "" } = await searchParams;
   const managedOnly = !isAdminLike(user.role);
+
+  await syncActiveHrmsPeople().catch((error) => console.error("People directory sync failed", error));
 
   const employees = await prisma.user.findMany({
     where: {

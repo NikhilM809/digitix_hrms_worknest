@@ -1,6 +1,8 @@
 import { prisma } from "@hrms/lib/prisma";
 import { requireAuth, apiSuccess, apiError } from "@hrms/lib/api-utils";
 import { getWorkScheduleForUserOnDate } from "@hrms/lib/work-schedule";
+import { autoCloseForgottenCheckouts } from "@hrms/lib/forgotten-checkout";
+import { getCompanyTimezone } from "@hrms/lib/company-timezone";
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -21,6 +23,8 @@ export async function GET() {
 
   const today = startOfDay();
   const now = new Date();
+  const timeZone = await getCompanyTimezone();
+  await autoCloseForgottenCheckouts(user.id, now, timeZone, "saturday-preview");
   const schedule = await getWorkScheduleForUserOnDate(user.id, today);
   const workStart = parseTimeToDate(schedule.workStartTime, today);
   const lateCutoff = new Date(workStart.getTime() + schedule.lateThreshold * 60 * 1000);

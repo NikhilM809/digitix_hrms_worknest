@@ -30,22 +30,27 @@ const typeIcons = {
 };
 
 export function RecentActivities({ activities }: { activities: ActivityItem[] }) {
+  const items = activities.slice(0, 8);
+
   return (
     <motion.div
+      className="flex h-full min-h-0 flex-col"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.3 }}
     >
-      <Card glass>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Recent Activities</CardTitle>
+      <Card glass className="flex h-full min-h-0 flex-col">
+        <CardHeader className="shrink-0 py-3">
+          <CardTitle className="text-sm font-semibold">Recent Activities</CardTitle>
         </CardHeader>
-        <CardContent>
-          {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No recent activities</p>
+        <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+          {items.length === 0 ? (
+            <p className="flex flex-1 items-center justify-center py-4 text-center text-sm text-muted-foreground">
+              No recent activities
+            </p>
           ) : (
-            <div className="space-y-4">
-              {activities.map((activity, index) => (
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              {items.map((activity) => (
                 <div key={activity.id} className="flex gap-3">
                   <div className="mt-1 h-2 w-2 rounded-full bg-brand-500 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -66,19 +71,22 @@ export function RecentActivities({ activities }: { activities: ActivityItem[] })
 export function UpcomingEvents({ events }: { events: UpcomingItem[] }) {
   return (
     <motion.div
+      className="flex h-full min-h-0 flex-col"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.4 }}
     >
-      <Card glass>
-        <CardHeader>
+      <Card glass className="flex h-full min-h-0 flex-col">
+        <CardHeader className="shrink-0">
           <CardTitle className="text-base font-semibold">Upcoming Events</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex min-h-0 flex-1 flex-col">
           {events.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No upcoming events</p>
+            <p className="flex flex-1 items-center justify-center py-8 text-center text-sm text-muted-foreground">
+              No upcoming events
+            </p>
           ) : (
-            <div className="space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {events.map((event) => {
                 const Icon = typeIcons[event.type] || Calendar;
                 return (

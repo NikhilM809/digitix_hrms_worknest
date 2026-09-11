@@ -122,7 +122,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const employee = await prisma.user.update({
       where: { id },
       data: updateData,
-      select: employeeSelect,
+      select: { ...employeeSelect, password: true, status: true },
     });
 
     await createAuditLog({
@@ -133,7 +133,18 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       details: `Updated employee ${employee.firstName} ${employee.lastName}`,
     });
 
-    return apiSuccess(employee);
+    const { syncWorknestUserFromHrms } = await import("@/lib/people-sync");
+    await syncWorknestUserFromHrms({
+      email: employee.email,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      role: employee.role,
+      status: employee.status,
+      password: employee.password,
+    }).catch((error) => console.error("Workspace login sync failed", error));
+
+    const { password: _password, ...publicEmployee } = employee;
+    return apiSuccess(publicEmployee);
   } catch (err) {
     if (err instanceof Error && err.name === "ZodError") {
       return apiError("Invalid employee data", 422);
@@ -159,7 +170,7 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
     const employee = await prisma.user.update({
       where: { id },
       data: { status: "LEFT" },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, email: true, firstName: true, lastName: true },
     });
 
     await createAuditLog({
@@ -169,6 +180,11 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       entityId: employee.id,
       details: `Marked employee ${employee.firstName} ${employee.lastName} as left`,
     });
+
+    const { deactivateWorknestUserByEmail } = await import("@/lib/people-sync");
+    await deactivateWorknestUserByEmail(employee.email).catch((error) =>
+      console.error("Workspace login deactivate failed", error),
+    );
 
     return apiSuccess({ id: employee.id });
   } catch (err) {

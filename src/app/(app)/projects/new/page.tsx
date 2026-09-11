@@ -1,7 +1,7 @@
 import { ProjectForm } from "@/components/project-form";
 import { PageHeader } from "@/components/ui";
-import { prisma } from "@/lib/db";
 import { nextProjectCode } from "@/lib/data";
+import { listAssignablePeople } from "@/lib/people-sync";
 import { getActiveClients } from "@/lib/catalog";
 import { getActiveCurrencies, getDefaultCurrency } from "@/lib/currency";
 import { ADMIN_LIKE_ROLES, requireRole } from "@/lib/permissions";
@@ -9,11 +9,7 @@ import { ADMIN_LIKE_ROLES, requireRole } from "@/lib/permissions";
 export default async function NewProjectPage() {
   const user = await requireRole(...ADMIN_LIKE_ROLES);
   const [people, code, currencies, fallback, clients] = await Promise.all([
-    prisma.user.findMany({
-      where: { active: true, role: { in: ["ADMIN", "SENIOR_MANAGER", "MANAGER", "EMPLOYEE"] } },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
-    }),
+    listAssignablePeople(),
     nextProjectCode(),
     getActiveCurrencies(),
     getDefaultCurrency(),

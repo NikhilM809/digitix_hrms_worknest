@@ -6,6 +6,7 @@ import { formatDate, formatHours, formatMoney } from "@/lib/format";
 import { PAGE_SIZE, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
 import { PROJECT_MANAGER_ROLES, STAFF_ROLES, canCreateProject, canSeeFinance, requireRole } from "@/lib/permissions";
 import { withVisibleProjects } from "@/lib/project-access";
+import { listAssignablePeople } from "@/lib/people-sync";
 import { getActiveClients } from "@/lib/catalog";
 import { AlertPills } from "@/components/status";
 import { ProjectStatusForm } from "@/components/project-status-form";
@@ -64,8 +65,8 @@ export default async function ProjectsPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    prisma.user.findMany({ where: { role: { in: PROJECT_MANAGER_ROLES } }, orderBy: { name: "asc" } }),
-    prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, orderBy: { name: "asc" } }),
+    listAssignablePeople({ role: { in: PROJECT_MANAGER_ROLES } }),
+    listAssignablePeople({ role: "EMPLOYEE" }),
     getActiveClients(),
   ]);
 

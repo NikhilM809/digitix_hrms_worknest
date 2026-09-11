@@ -8,12 +8,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { Settings, Loader2, ShieldAlert, Clock, Building, Network, Users } from "lucide-react";
+import { Loader2, ShieldAlert, Building, Network, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@hrms/components/ui/button";
 import { Input } from "@hrms/components/ui/input";
 import { Label } from "@hrms/components/ui/label";
-import { Textarea } from "@hrms/components/ui/textarea";
 import { Switch } from "@hrms/components/ui/switch";
 import { Skeleton } from "@hrms/components/ui/skeleton";
 import {
@@ -149,7 +148,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-2 max-w-md">
           Company settings are only accessible to administrators.
         </p>
-        <Button className="mt-6" variant="outline" onClick={() => router.push("/hr/dashboard")}>
+        <Button className="mt-6" variant="outline" onClick={() => router.push("/dashboard")}>
           Go to Dashboard
         </Button>
       </motion.div>
@@ -163,13 +162,8 @@ export default function SettingsPage() {
       className="space-y-6 max-w-3xl"
     >
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Settings className="h-7 w-7 text-brand-600" />
-          Company Settings
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Configure organization-wide policies and preferences
-        </p>
+        <h1 className="font-display text-3xl tracking-tight text-ink">Company</h1>
+        <p className="mt-1 text-sm text-muted">Organization profile, hierarchy, and employee preferences.</p>
       </div>
 
       <Card glass>
@@ -333,97 +327,16 @@ export default function SettingsPage() {
                     {...form.register("companyLogo")}
                   />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card glass>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Work Schedule
-              </CardTitle>
-              <CardDescription>
-                Default working hours and attendance rules
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="workStartTime">Work Start</Label>
+                  <Label htmlFor="sessionTimeout">Session Timeout (minutes)</Label>
                   <Input
-                    id="workStartTime"
-                    type="time"
-                    {...form.register("workStartTime")}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="workEndTime">Work End</Label>
-                  <Input
-                    id="workEndTime"
-                    type="time"
-                    {...form.register("workEndTime")}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lateThreshold">Late Threshold (min)</Label>
-                  <Input
-                    id="lateThreshold"
+                    id="sessionTimeout"
                     type="number"
-                    min={0}
-                    max={120}
-                    {...form.register("lateThreshold", { valueAsNumber: true })}
+                    min={5}
+                    max={480}
+                    {...form.register("sessionTimeout", { valueAsNumber: true })}
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sessionTimeout">Session Timeout (minutes)</Label>
-                <Input
-                  id="sessionTimeout"
-                  type="number"
-                  min={5}
-                  max={480}
-                  className="max-w-xs"
-                  {...form.register("sessionTimeout", { valueAsNumber: true })}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card glass>
-            <CardHeader>
-              <CardTitle className="text-base">Policies</CardTitle>
-              <CardDescription>
-                Organization policies displayed to employees
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="leavePolicy">Leave Policy</Label>
-                <Textarea
-                  id="leavePolicy"
-                  rows={4}
-                  placeholder="Describe your leave policy..."
-                  {...form.register("leavePolicy")}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="attendanceRules">Attendance Rules</Label>
-                <Textarea
-                  id="attendanceRules"
-                  rows={4}
-                  placeholder="Describe attendance expectations..."
-                  {...form.register("attendanceRules")}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="passwordPolicy">Password Policy</Label>
-                <Textarea
-                  id="passwordPolicy"
-                  rows={3}
-                  placeholder="Password requirements for employees..."
-                  {...form.register("passwordPolicy")}
-                />
               </div>
             </CardContent>
           </Card>

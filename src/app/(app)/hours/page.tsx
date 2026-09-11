@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { formatDate, formatHours } from "@/lib/format";
 import { STAFF_ROLES, isAdminLike, requireRole } from "@/lib/permissions";
+import { listAssignablePeople, listManagedTeamPeople } from "@/lib/people-sync";
 
 export default async function HoursPage({
   searchParams,
@@ -15,30 +16,62 @@ export default async function HoursPage({
 }) {
   const user = await requireRole(...STAFF_ROLES);
   const { employeeId = "", projectId = "", status = "", client = "" } = await searchParams;
-  const [entries, employees, projects, tasks, workTypes, clients] = await Promise.all([
+  const teamOnly = !isAdminLike(user.role);
+  const employees = teamOnly
+    ? await listManagedTeamPeople(user.id)
+    : await listAssignablePeople({ role: "EMPLOYEE" });
+  const teamIds = employees.map((employee) => employee.id);
+  const scopedEmployeeId =
+    employeeId && (!teamOnly || teamIds.includes(employeeId)) ? employeeId : "";
+  const [entries, projects, tasks, workTypes, clients] = await Promise.all([
     prisma.timeEntry.findMany({
       where: {
-        ...(employeeId ? { employeeId } : {}),
+        ...(scopedEmployeeId
+          ? { employeeId: scopedEmployeeId }
+          : teamOnly
+            ? { employeeId: { in: teamIds.length ? teamIds : ["__none__"] } }
+            : {}),
         ...(projectId ? { projectId } : {}),
         ...(status ? { status: status as "SUBMITTED" } : {}),
-        ...(client ? { project: { clientName: client } } : {}),
+        ...((teamOnly || client)
+          ? {
+              project: {
+                ...(teamOnly ? { managerId: user.id } : {}),
+                ...(client ? { clientName: client } : {}),
+              },
+            }
+          : {}),
       },
       include: { employee: true, project: true, task: true },
       orderBy: { date: "desc" },
       take: 200,
     }),
-    prisma.user.findMany({ where: { role: "EMPLOYEE", active: true }, orderBy: { name: "asc" } }),
-    prisma.project.findMany({ where: { status: { notIn: ["CLOSE", "CANCEL"] } }, orderBy: { name: "asc" } }),
-    prisma.task.findMany(),
+    prisma.project.findMany({
+      where: {
+        status: { notIn: ["CLOSE", "CANCEL"] },
+        ...(teamOnly ? { managerId: user.id } : {}),
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.task.findMany({
+      where: teamOnly ? { project: { managerId: user.id } } : undefined,
+    }),
     getActiveWorkTypes(),
     getActiveClients(),
   ]);
 
   return (
     <div>
-      <PageHeader title="Hours" description="Employee enters hours. Manager reviews. Admin can see all." />
+      <PageHeader
+        title="Hours"
+        description={
+          teamOnly
+            ? "Review hours for your team only."
+            : "Employee enters hours. Manager reviews. Admin can see all."
+        }
+      />
       <form className="mb-4 grid gap-3 md:grid-cols-5">
-        <Select name="employeeId" defaultValue={employeeId}>
+        <Select name="employeeId" defaultValue={scopedEmployeeId}>
           <option value="">All employees</option>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>

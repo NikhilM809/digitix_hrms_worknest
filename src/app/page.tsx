@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/permissions";
+import { auth } from "@/auth";
+import { appHomePath } from "@/lib/home-path";
 
 export default async function Home() {
-  const user = await getCurrentUser();
-  redirect(user ? "/dashboard" : "/login");
+  const session = await auth();
+  const user = session?.user;
+  redirect(user?.role ? appHomePath(user.role, user.hrmsRole) : "/login");
 }

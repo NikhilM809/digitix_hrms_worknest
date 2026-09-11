@@ -68,7 +68,7 @@
   --color-paper: var(--paper);
   --color-paper-card: var(--paper-card);
   --color-ink: var(--ink);
-  --color-muted: var(--muted);
+  --color-muted: var(--secondary);
   --color-line: var(--line);
   --color-teal: var(--teal);
   --color-teal-dark: var(--teal-dark);
@@ -94,9 +94,12 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-brand-100: #e4f3f2;
+  --color-brand-300: #3cb8b1;
   --color-brand-500: var(--teal);
   --color-brand-600: var(--teal-dark);
   --color-brand-700: var(--teal-dark);
+  --color-brand-900: var(--navy);
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
 }
@@ -113,4 +116,40 @@ body {
 
 .font-display {
   font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+
+/* Keep Worknest `text-muted` as readable copy; `bg-muted` uses the surface token. */
+.text-muted {
+  color: var(--muted);
+}
+
+.dark {
+  --color-brand-100: #17302e;
+}
+
+.gradient-bg,
+.gradient-card-blue {
+  background: linear-gradient(135deg, #15202e 0%, #0b6e6a 100%);
+}
+.gradient-card-purple {
+  background: linear-gradient(135deg, #1d2b3d 0%, #3d4a6b 100%);
+}
+.gradient-card-green {
+  background: linear-gradient(135deg, #085753 0%, #2a9e98 100%);
+}
+.gradient-card-orange {
+  background: linear-gradient(135deg, #a35f12 0%, #c47b1a 100%);
+}
+
+.dark .gradient-card-blue {
+  background: linear-gradient(135deg, #0c1117 0%, #2a9e98 100%);
+}
+.dark .gradient-card-purple {
+  background: linear-gradient(135deg, #141b24 0%, #4a5878 100%);
+}
+.dark .gradient-card-green {
+  background: linear-gradient(135deg, #17302e 0%, #3cb8b1 100%);
+}
+.dark .gradient-card-orange {
+  background: linear-gradient(135deg, #7a4710 0%, #e0a04a 100%);
 }

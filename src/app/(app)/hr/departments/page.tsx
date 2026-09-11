@@ -66,7 +66,7 @@ export default function DepartmentsPage() {
         <ShieldAlert className="h-16 w-16 text-destructive/60 mb-4" />
         <h1 className="text-2xl font-bold">Access Denied</h1>
         <p className="text-muted-foreground mt-2">Department management is for administrators only.</p>
-        <Button className="mt-6" variant="outline" onClick={() => router.push("/hr/dashboard")}>
+        <Button className="mt-6" variant="outline" onClick={() => router.push("/dashboard")}>
           Go to Dashboard
         </Button>
       </div>
@@ -136,7 +136,7 @@ export default function DepartmentsPage() {
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
             <Building2 className="h-7 w-7 text-brand-600" />
             Departments
           </h1>

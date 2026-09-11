@@ -90,7 +90,7 @@ export default function MyTeamPage() {
         <p className="text-muted-foreground mt-2 max-w-md">
           Your administrator has disabled organization hierarchy visibility for your role.
         </p>
-        <Button className="mt-6" variant="outline" onClick={() => router.push("/hr/dashboard")}>
+        <Button className="mt-6" variant="outline" onClick={() => router.push("/dashboard")}>
           Go Back
         </Button>
       </div>
@@ -104,7 +104,7 @@ export default function MyTeamPage() {
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
           <UsersRound className="h-7 w-7 text-brand-600" />
           My Team
         </h1>

@@ -13,34 +13,29 @@ interface StatCardProps {
   delay?: number;
 }
 
-const gradients = {
-  blue: "gradient-card-blue",
-  purple: "gradient-card-purple",
-  green: "gradient-card-green",
-  orange: "gradient-card-orange",
+const accents = {
+  blue: "bg-navy/10 text-navy dark:bg-white/10 dark:text-white",
+  purple: "bg-teal/10 text-teal",
+  green: "bg-teal/10 text-teal",
+  orange: "bg-gold/15 text-gold",
 };
 
 export function StatCard({ title, value, subtitle, icon: Icon, gradient, delay = 0 }: StatCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className={cn(
-        "relative overflow-hidden rounded-2xl p-6 text-white shadow-lg",
-        gradients[gradient]
-      )}
+      transition={{ duration: 0.35, delay }}
+      className="rounded-2xl border border-line bg-paper-card p-6 text-ink shadow-[0_1px_0_rgba(27,36,48,0.04)]"
     >
-      <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
-      <div className="absolute -right-2 -bottom-2 h-16 w-16 rounded-full bg-white/5" />
-      <div className="relative flex items-start justify-between">
+      <div className="relative flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-white/80">{title}</p>
-          <p className="mt-2 text-3xl font-bold">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-white/70">{subtitle}</p>}
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{title}</p>
+          <p className="mt-2 font-display text-3xl text-ink">{value}</p>
+          {subtitle ? <p className="mt-1 text-xs text-muted">{subtitle}</p> : null}
         </div>
-        <div className="rounded-xl bg-white/20 p-3 backdrop-blur-sm">
-          <Icon className="h-6 w-6" />
+        <div className={cn("rounded-xl p-3", accents[gradient])}>
+          <Icon className="h-5 w-5" />
         </div>
       </div>
     </motion.div>

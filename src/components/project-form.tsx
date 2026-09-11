@@ -122,7 +122,7 @@ export function ProjectForm({
             ))}
           </Select>
           {canEditFinance ? (
-            <span className="text-xs text-muted">Add more clients in Settings.</span>
+            <span className="text-xs text-muted">Add more clients in Workspace.</span>
           ) : null}
         </Field>
         <Field label="Project manager">

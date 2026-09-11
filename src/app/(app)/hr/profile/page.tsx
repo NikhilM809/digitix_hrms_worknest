@@ -180,7 +180,7 @@ export default function ProfilePage() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+        <h1 className="font-display text-3xl tracking-tight text-ink">Profile</h1>
         <p className="text-muted-foreground mt-1">
           Manage your personal information and security settings
         </p>

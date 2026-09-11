@@ -335,7 +335,7 @@ export default function KraPage() {
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
           <Target className="h-7 w-7 text-brand-600" />
           Key Result Areas (KRA)
         </h1>

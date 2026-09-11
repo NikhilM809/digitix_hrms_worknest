@@ -88,7 +88,7 @@ export default function DashboardPage() {
   if (isError || !data) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-muted-foreground">Failed to load dashboard. Please refresh.</p>
+        <p className="text-muted">Failed to load dashboard. Please refresh.</p>
       </div>
     );
   }
@@ -102,11 +102,11 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <h1 className="text-2xl font-bold tracking-tight">
-          Welcome back, {session?.user?.firstName ?? "there"}!
+        <h1 className="font-display text-3xl tracking-tight text-ink">
+          Welcome back, {session?.user?.firstName ?? "there"}
         </h1>
-        <p className="text-muted-foreground mt-1">
-          Here&apos;s what&apos;s happening at Digitix Labs today.
+        <p className="mt-1 text-sm text-muted">
+          People and delivery for Digitix Labs today.
         </p>
       </motion.div>
 
@@ -147,12 +147,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <AttendanceTrendChart data={data.charts.attendanceTrend} />
         <LeaveTrendChart data={data.charts.leaveTrend} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
         {showManagerStats && data.charts.departmentWiseEmployees.length > 0 && (
           <DepartmentChart data={data.charts.departmentWiseEmployees} />
         )}
@@ -161,7 +161,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <RecentActivities activities={data.recentActivities} />
         <UpcomingEvents events={data.upcomingEvents} />
       </div>

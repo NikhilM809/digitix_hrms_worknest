@@ -28,8 +28,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@hrms/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@hrms/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@hrms/components/ui/tabs";
-import { apiFetch } from "@hrms/lib/client-api";
+import { apiFetch, apiFetchArray } from "@hrms/lib/client-api";
 import {
   exportToCsv,
   exportToExcel,
@@ -38,6 +45,13 @@ import {
 } from "@hrms/lib/export-utils";
 
 type ReportType = "attendance" | "leave" | "employee" | "department";
+
+type ReportEmployee = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+};
 
 const REPORT_TITLES: Record<ReportType, string> = {
   attendance: "Attendance Report",
@@ -147,15 +161,29 @@ function ReportTable({
   );
 }
 
-function ReportPanel({ type, from, to }: { type: ReportType; from: string; to: string }) {
+function ReportPanel({
+  type,
+  from,
+  to,
+  employeeId,
+  lateOnly,
+}: {
+  type: ReportType;
+  from: string;
+  to: string;
+  employeeId: string;
+  lateOnly: boolean;
+}) {
   const params = new URLSearchParams({ type });
   if (from && to) {
     params.set("from", from);
     params.set("to", to);
   }
+  if (employeeId) params.set("employeeId", employeeId);
+  if (type === "attendance" && lateOnly) params.set("late", "true");
 
   const { data: rows = [], isLoading, isFetching } = useQuery({
-    queryKey: ["reports", type, from, to],
+    queryKey: ["reports", type, from, to, employeeId, type === "attendance" && lateOnly],
     queryFn: () => apiFetch<ExportRow[]>(`/api/reports?${params.toString()}`),
   });
 
@@ -183,7 +211,15 @@ export default function ReportsPage() {
     format(subDays(new Date(), 30), "yyyy-MM-dd")
   );
   const [toDate, setToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [employeeId, setEmployeeId] = useState("");
+  const [lateOnly, setLateOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportType>("attendance");
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ["report-employees"],
+    queryFn: () => apiFetchArray<ReportEmployee>("/api/employees?activeOnly=true"),
+    enabled: status === "authenticated" && canAccess,
+  });
 
   if (status === "loading") {
     return <Skeleton className="h-96 w-full rounded-2xl" />;
@@ -195,7 +231,7 @@ export default function ReportsPage() {
         <ShieldAlert className="h-16 w-16 text-destructive/60 mb-4" />
         <h1 className="text-2xl font-bold">Access Denied</h1>
         <p className="text-muted-foreground mt-2">Reports are available to managers and admins only.</p>
-        <Button className="mt-6" variant="outline" onClick={() => router.push("/hr/dashboard")}>
+        <Button className="mt-6" variant="outline" onClick={() => router.push("/dashboard")}>
           Go to Dashboard
         </Button>
       </div>
@@ -209,12 +245,12 @@ export default function ReportsPage() {
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl tracking-tight text-ink flex items-center gap-2">
           <BarChart3 className="h-7 w-7 text-brand-600" />
-          Reports
+          People reports
         </h1>
         <p className="text-muted-foreground mt-1">
-          Generate and export HR analytics reports
+          Attendance, leave, and employee exports
         </p>
       </div>
 
@@ -225,11 +261,13 @@ export default function ReportsPage() {
             Date Range
           </CardTitle>
           <CardDescription>
-            Applies to Attendance and Leave reports
+            Attendance and leave use this range. Filter by employee on any tab, and by late
+            arrivals on Attendance. Weekly and monthly hours are included on Attendance and
+            Employee reports.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 max-w-md">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="fromDate">From</Label>
               <Input
@@ -247,6 +285,41 @@ export default function ReportsPage() {
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Employee</Label>
+              <Select
+                value={employeeId || "all"}
+                onValueChange={(value) => setEmployeeId(value === "all" ? "" : value)}
+              >
+                <SelectTrigger aria-label="Filter by employee">
+                  <SelectValue placeholder="All employees" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All employees</SelectItem>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {employee.firstName} {employee.lastName} ({employee.employeeId})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Late</Label>
+              <Select
+                value={lateOnly ? "late" : "all"}
+                onValueChange={(value) => setLateOnly(value === "late")}
+                disabled={activeTab !== "attendance"}
+              >
+                <SelectTrigger aria-label="Filter late attendance">
+                  <SelectValue placeholder="All records" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All records</SelectItem>
+                  <SelectItem value="late">Late only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
@@ -266,16 +339,40 @@ export default function ReportsPage() {
             </TabsList>
 
             <TabsContent value="attendance">
-              <ReportPanel type="attendance" from={fromDate} to={toDate} />
+              <ReportPanel
+                type="attendance"
+                from={fromDate}
+                to={toDate}
+                employeeId={employeeId}
+                lateOnly={lateOnly}
+              />
             </TabsContent>
             <TabsContent value="leave">
-              <ReportPanel type="leave" from={fromDate} to={toDate} />
+              <ReportPanel
+                type="leave"
+                from={fromDate}
+                to={toDate}
+                employeeId={employeeId}
+                lateOnly={false}
+              />
             </TabsContent>
             <TabsContent value="employee">
-              <ReportPanel type="employee" from={fromDate} to={toDate} />
+              <ReportPanel
+                type="employee"
+                from={fromDate}
+                to={toDate}
+                employeeId={employeeId}
+                lateOnly={false}
+              />
             </TabsContent>
             <TabsContent value="department">
-              <ReportPanel type="department" from={fromDate} to={toDate} />
+              <ReportPanel
+                type="department"
+                from={fromDate}
+                to={toDate}
+                employeeId={employeeId}
+                lateOnly={false}
+              />
             </TabsContent>
           </Tabs>
         </CardContent>

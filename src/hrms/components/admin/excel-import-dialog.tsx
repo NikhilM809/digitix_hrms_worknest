@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Loader2, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@hrms/components/ui/button";
+import { hrmsApiUrl } from "@hrms/lib/client-api";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,7 @@ export function ExcelImportDialog({
       formData.append("file", file);
       if (confirm) formData.append("confirm", "true");
 
-      const res = await fetch(uploadUrl, { method: "POST", body: formData });
+      const res = await fetch(hrmsApiUrl(uploadUrl), { method: "POST", body: formData });
       const data = await res.json();
 
       if (res.status === 422 && data.errors) {

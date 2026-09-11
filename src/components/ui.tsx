@@ -125,7 +125,7 @@ export function StatCard({
   warn?: boolean;
 }) {
   return (
-    <Card className="p-4">
+    <Card className="p-4 transition hover:border-teal/40">
       <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
       <p className={cn("mt-2 font-display text-2xl", warn ? "text-danger" : "text-ink")}>{value}</p>
       {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}

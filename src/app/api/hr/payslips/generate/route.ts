@@ -13,10 +13,7 @@ import { payslipGenerateSchema } from "@hrms/lib/validations";
 import { canGeneratePayslip } from "@hrms/lib/permissions";
 import { calculateNetSalary } from "@hrms/lib/payslip-calc";
 import { generatePayslipPdfBuffer } from "@hrms/lib/payslip-pdf";
-
-function daysInMonth(month: number, year: number) {
-  return new Date(year, month, 0).getDate();
-}
+import { computeMonthlyPayslipAttendance } from "@hrms/lib/monthly-attendance-stats";
 
 export async function POST(req: NextRequest) {
   const { error, user } = await requireAuth(["ADMIN"]);
@@ -71,16 +68,12 @@ export async function POST(req: NextRequest) {
     const settings = await prisma.companySettings.findFirst();
     const companyName = settings?.companyName ?? "Digitix Labs";
 
-    const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-
-    const payableDays = await prisma.attendance.count({
-      where: {
-        userId,
-        date: { gte: monthStart, lte: monthEnd },
-        status: { in: ["PRESENT", "LATE", "HALF_DAY", "WORK_FROM_HOME"] },
-      },
-    });
+    const {
+      daysPresent,
+      totalDaysInMonth,
+      monthlyWorkingHours,
+      showMonthlyWorkingHours,
+    } = await computeMonthlyPayslipAttendance(userId, month, year);
 
     const pdfBuffer = generatePayslipPdfBuffer({
       companyName,
@@ -99,8 +92,9 @@ export async function POST(req: NextRequest) {
       reimbursement,
       deductions,
       netSalary,
-      payableDays,
-      totalDaysInMonth: daysInMonth(month, year),
+      daysPresent,
+      totalDaysInMonth,
+      monthlyWorkingHours: showMonthlyWorkingHours ? monthlyWorkingHours : undefined,
       generatedAt: new Date(),
     });
 

@@ -46,7 +46,7 @@ export function AddHoursForm({
   }
 
   if (projects.length === 0) {
-    return <p className="text-sm text-muted">No assigned projects yet.</p>;
+    return <p className="text-sm text-muted">No active projects yet.</p>;
   }
 
   return (
