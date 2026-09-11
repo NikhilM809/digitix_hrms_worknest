@@ -100,8 +100,8 @@ async function AdminDashboard({
       </div>
 
       {peopleStats ? (
-        <div className="mb-8 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="mb-8 grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+          <div className="grid gap-3 sm:grid-cols-2">
             <HighlightStat
               label="Employees"
               value={peopleStats.employees}
@@ -306,9 +306,9 @@ async function ManagerDashboard({
         <h1 className="font-display text-3xl tracking-tight text-ink">{dayGreeting()}</h1>
       </div>
 
-      <div className="mb-8 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(16rem,0.8fr)]">
+      <div className="mb-8 grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
         {peopleStats ? (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <HighlightStat
               label="Team members"
               value={peopleStats.employees}
@@ -335,21 +335,13 @@ async function ManagerDashboard({
             />
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <StatCard label="Your projects" value={mine.length} />
             <StatCard label="Due today" value={dueToday.length} />
             <StatCard label="Blocked" value={blocked.length} warn={blocked.length > 0} />
             <StatCard label="Overdue" value={overdue + overdueTasks.length} warn={overdue + overdueTasks.length > 0} />
           </div>
         )}
-        <Card className="p-5">
-          <h2 className="mb-4 font-display text-xl text-ink">Time sheet</h2>
-          <AddHoursForm
-            projects={timesheetProjects}
-            tasks={timesheetTasks}
-            workTypes={workTypes}
-          />
-        </Card>
         {peopleLinked ? <PeopleRecentActivity /> : <div />}
       </div>
 
@@ -388,7 +380,8 @@ async function ManagerDashboard({
 
       {peopleLinked ? <PeopleInsights /> : null}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <h2 className="mt-8 mb-3 font-display text-xl text-ink">Projects</h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Your projects" value={mine.length} hint={`${projects.length} active in the studio`} />
         <StatCard label="Due today" value={dueToday.length} />
         <StatCard label="Blocked" value={blocked.length} warn={blocked.length > 0} />
@@ -400,6 +393,14 @@ async function ManagerDashboard({
           hint={dueSoon ? `${dueSoon} due soon` : undefined}
         />
       </div>
+      <Card className="mt-6 p-5">
+        <h2 className="mb-4 font-display text-xl text-ink">Time sheet</h2>
+        <AddHoursForm
+          projects={timesheetProjects}
+          tasks={timesheetTasks}
+          workTypes={workTypes}
+        />
+      </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <FocusList
           title="Needs attention"

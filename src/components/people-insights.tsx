@@ -35,19 +35,19 @@ export function PeopleRecentActivity() {
   const { data, isLoading, isError } = usePeopleDashboard();
 
   if (isLoading) {
-    return <Skeleton className="h-full min-h-[22rem] rounded-3xl" />;
+    return <Skeleton className="h-full min-h-[9.5rem] rounded-2xl" />;
   }
 
   if (isError || !data) {
     return (
-      <section className="flex h-full min-h-[22rem] items-center justify-center rounded-3xl border border-line bg-paper-card p-5 text-sm text-muted">
+      <section className="flex h-full min-h-[9.5rem] items-center justify-center rounded-2xl border border-line bg-paper-card p-4 text-sm text-muted">
         Recent activity is unavailable.
       </section>
     );
   }
 
   return (
-    <div className="h-full min-h-[22rem]">
+    <div className="h-full min-h-[9.5rem] max-h-[9.5rem]">
       <RecentActivities activities={data.recentActivities} />
     </div>
   );

@@ -27,11 +27,11 @@ export function HighlightStat({
   tone: keyof typeof tones;
 }) {
   return (
-    <div className={cn("flex min-h-[132px] flex-col justify-between rounded-3xl p-5", tones[tone])}>
-      <Icon className="h-5 w-5 opacity-70" />
-      <div>
-        <p className="text-sm font-medium opacity-80">{label}</p>
-        <p className="mt-1 font-display text-3xl leading-none">{value}</p>
+    <div className={cn("flex min-h-[66px] items-center gap-3 rounded-2xl px-4 py-3", tones[tone])}>
+      <Icon className="h-4 w-4 shrink-0 opacity-70" />
+      <div className="min-w-0">
+        <p className="text-xs font-medium opacity-80">{label}</p>
+        <p className="font-display text-2xl leading-none">{value}</p>
       </div>
     </div>
   );

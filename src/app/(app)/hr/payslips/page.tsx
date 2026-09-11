@@ -153,6 +153,7 @@ export default function PayslipsPage() {
   const canUpload = role ? canUploadPayslip(role) : false;
   const canGenerate = role ? canGeneratePayslip(role) : false;
   const showSearch = role ? canViewAllSalaries(role) : false;
+  const ownPayslipsOnly = !showSearch;
   const queryClient = useQueryClient();
 
   const [monthFilter, setMonthFilter] = useState("all");
@@ -293,7 +294,7 @@ export default function PayslipsPage() {
           <p className="text-muted-foreground mt-1">
             {canUpload
               ? "Upload, generate, and manage employee payslips"
-              : "View and download your payslips"}
+              : "View and download your own payslips"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -366,9 +367,11 @@ export default function PayslipsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/50">
-                  <th className="h-12 px-4 text-left font-medium text-muted-foreground">
-                    Employee
-                  </th>
+                  {!ownPayslipsOnly ? (
+                    <th className="h-12 px-4 text-left font-medium text-muted-foreground">
+                      Employee
+                    </th>
+                  ) : null}
                   <th className="h-12 px-4 text-left font-medium text-muted-foreground">
                     Period
                   </th>
@@ -390,7 +393,7 @@ export default function PayslipsPage() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="border-b border-border/50">
-                      {Array.from({ length: 6 }).map((_, j) => (
+                      {Array.from({ length: ownPayslipsOnly ? 5 : 6 }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
                           <Skeleton className="h-5 w-full" />
                         </td>
@@ -400,7 +403,7 @@ export default function PayslipsPage() {
                 ) : filteredPayslips.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={ownPayslipsOnly ? 5 : 6}
                       className="px-4 py-12 text-center text-muted-foreground"
                     >
                       No payslips found for the selected period
@@ -412,16 +415,18 @@ export default function PayslipsPage() {
                       key={payslip.id}
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                     >
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium">
-                            {payslip.user.firstName} {payslip.user.lastName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {payslip.user.employeeId}
-                          </p>
-                        </div>
-                      </td>
+                      {!ownPayslipsOnly ? (
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="font-medium">
+                              {payslip.user.firstName} {payslip.user.lastName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {payslip.user.employeeId}
+                            </p>
+                          </div>
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3">
                         <Badge variant="outline">
                           {MONTHS.find((m) => m.value === payslip.month)?.label}{" "}

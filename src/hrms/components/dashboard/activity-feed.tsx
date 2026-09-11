@@ -40,16 +40,16 @@ export function RecentActivities({ activities }: { activities: ActivityItem[] })
       transition={{ duration: 0.4, delay: 0.3 }}
     >
       <Card glass className="flex h-full min-h-0 flex-col">
-        <CardHeader className="shrink-0 pb-3">
-          <CardTitle className="text-base font-semibold">Recent Activities</CardTitle>
+        <CardHeader className="shrink-0 py-3">
+          <CardTitle className="text-sm font-semibold">Recent Activities</CardTitle>
         </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col">
+        <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
           {items.length === 0 ? (
-            <p className="flex flex-1 items-center justify-center py-8 text-center text-sm text-muted-foreground">
+            <p className="flex flex-1 items-center justify-center py-4 text-center text-sm text-muted-foreground">
               No recent activities
             </p>
           ) : (
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {items.map((activity) => (
                 <div key={activity.id} className="flex gap-3">
                   <div className="mt-1 h-2 w-2 rounded-full bg-brand-500 shrink-0" />
