@@ -8,6 +8,7 @@ import { markProjectsForBilling } from "@/actions/billing";
 import { BillingBadge, StatusBadge } from "@/components/status";
 import { Button } from "@/components/ui";
 import { trackerProjectStatusLabel } from "@/lib/constants";
+import { billableAmount } from "@/lib/finance";
 import { formatDate, formatHours, formatMoney } from "@/lib/format";
 import type { ProjectStatus } from "@prisma/client";
 
@@ -130,7 +131,8 @@ export function UnbilledBillingReport({
 
   const selectedRows = rows.filter((row) => selected.includes(row.id));
   const openSelected = selectedRows.filter((row) => !row.closed);
-  const selectedAmount = selectedRows.reduce((sum, row) => sum + row.sellValue, 0);
+  const amountFor = (row: UnbilledRow) => billableAmount(row.sellValue, row.changesHours, row.liveHours);
+  const selectedAmount = selectedRows.reduce((sum, row) => sum + amountFor(row), 0);
   const selectedCurrency = selectedRows[0]?.currencyCode ?? rows[0]?.currencyCode ?? "";
   const totals = rows.reduce(
     (sum, row) => ({
@@ -149,7 +151,7 @@ export function UnbilledBillingReport({
           <h2 className="font-display text-xl">Unbilled projects</h2>
           <p className="mt-1 text-sm text-muted">
             Review hours here or in Excel, then pick what to bill. You can select any unbilled project; if it is not
-            closed, you will get a warning first. Invoice amounts default to the overall project value.
+            closed, you will get a warning first. The billable total is the project value plus change and live hours at 20 each.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -184,7 +186,7 @@ export function UnbilledBillingReport({
         </button>
       </div>
       <p className="text-sm text-muted">
-        {selected.length} selected · overall {formatMoney(selectedAmount, selectedCurrency)} ·{" "}
+        {selected.length} selected · billable {formatMoney(selectedAmount, selectedCurrency)} ·{" "}
         {formatHours(totals.initial)} initial · {formatHours(totals.changes)} changes · {formatHours(totals.total)} total
         hours
       </p>
@@ -212,6 +214,7 @@ export function UnbilledBillingReport({
                 <th className="px-4 py-3 text-right">Live</th>
                 <th className="px-4 py-3 text-right">Total hours</th>
                 <th className="px-4 py-3 text-right">Project value</th>
+                <th className="px-4 py-3 text-right">Billable total</th>
                 <th className="px-4 py-3">ETA / closed</th>
                 <th className="px-4 py-3">Billing</th>
               </tr>
@@ -242,6 +245,7 @@ export function UnbilledBillingReport({
                   <td className="px-4 py-3 text-right">{formatHours(row.liveHours)}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatHours(row.totalHours)}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(row.sellValue, row.currencyCode)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{formatMoney(amountFor(row), row.currencyCode)}</td>
                   <td className="px-4 py-3">{formatDate(row.actualCompletionDate ?? row.eta)}</td>
                   <td className="px-4 py-3">
                     <BillingBadge status={row.markedForBilling ? "Approved" : "To be billed"} />
@@ -261,7 +265,7 @@ export function UnbilledBillingReport({
                 </th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Project</th>
-                <th className="px-4 py-3 text-right">Total cost</th>
+                <th className="px-4 py-3 text-right">Billable total</th>
                 <th className="px-4 py-3">Project receive date</th>
                 <th className="px-4 py-3">Delivery date</th>
                 <th className="px-4 py-3">Billed</th>
@@ -288,7 +292,7 @@ export function UnbilledBillingReport({
                       {row.name} - {row.code}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-right">{formatMoney(row.sellValue, row.currencyCode)}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(amountFor(row), row.currencyCode)}</td>
                   <td className="px-4 py-3">{formatDate(row.startDate ?? row.createdAt)}</td>
                   <td className="px-4 py-3">{formatDate(row.actualCompletionDate ?? row.eta)}</td>
                   <td className="px-4 py-3">No</td>

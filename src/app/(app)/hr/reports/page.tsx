@@ -267,8 +267,8 @@ export default function ReportsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
+          <div className="flex flex-nowrap items-end gap-3 overflow-x-auto">
+            <div className="w-40 shrink-0 space-y-2">
               <Label htmlFor="fromDate">From</Label>
               <Input
                 id="fromDate"
@@ -277,7 +277,7 @@ export default function ReportsPage() {
                 onChange={(e) => setFromDate(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
+            <div className="w-40 shrink-0 space-y-2">
               <Label htmlFor="toDate">To</Label>
               <Input
                 id="toDate"
@@ -286,7 +286,7 @@ export default function ReportsPage() {
                 onChange={(e) => setToDate(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
+            <div className="w-72 shrink-0 space-y-2">
               <Label>Employee</Label>
               <Select
                 value={employeeId || "all"}
@@ -305,7 +305,7 @@ export default function ReportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="w-44 shrink-0 space-y-2">
               <Label>Late</Label>
               <Select
                 value={lateOnly ? "late" : "all"}

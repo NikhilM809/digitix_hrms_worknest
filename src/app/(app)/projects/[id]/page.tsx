@@ -2,7 +2,8 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { addProjectNote } from "@/actions/misc";
 import { closeProject, deleteProject, reopenProject } from "@/actions/projects";
-import { reviewHours } from "@/actions/hours";
+import { HourEntryEditor } from "@/components/hour-entry-editor";
+import { productivityHours, requiresChangeApproval } from "@/lib/hour-approval";
 import { createTask } from "@/actions/tasks";
 import { ProjectForm } from "@/components/project-form";
 import { ProjectStatusForm } from "@/components/project-status-form";
@@ -11,16 +12,18 @@ import { AlertPills, BillingBadge, HoursBar, TaskBadge } from "@/components/stat
 import { ConfirmForm } from "@/components/confirm-form";
 import { ExportApprovalButton } from "@/components/export-approval-button";
 import { Button, Card, EmptyState, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
-import { PROJECT_STATUS_LABEL, TASK_STATUS_LABEL, workTypeLabel } from "@/lib/constants";
+import { PROJECT_STATUS_LABEL, ROLE_LABEL, TASK_STATUS_LABEL, workTypeLabel } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { getSettings, hoursByWorkType, sumHours } from "@/lib/data";
 import { billingStatusForProject } from "@/lib/finance";
 import { getActiveCurrencies } from "@/lib/currency";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { formatDate, formatHours, formatMoney } from "@/lib/format";
-import { STAFF_ROLES, canSeeFinance, isAdminLike, requireRole } from "@/lib/permissions";
+import { STAFF_ROLES, TASK_ASSIGNEE_ROLES, canSeeFinance, isAdminLike, requireRole } from "@/lib/permissions";
 import { asFormAction } from "@/lib/utils";
+import { listDirectReportUsers, managerCanAccessProject } from "@/lib/direct-reports";
 import { listAssignablePeople } from "@/lib/people-sync";
+import { isProjectStatus } from "@/lib/project-status";
 import { notFound } from "next/navigation";
 
 function iso(value?: Date | null) {
@@ -55,13 +58,19 @@ export default async function ProjectDetailPage({
     },
   });
   if (!project) notFound();
+  if (user.role === "MANAGER" && !(await managerCanAccessProject(user.id, project.id))) notFound();
 
   const actual = sumHours(project.timeEntries);
   const breakdown = hoursByWorkType(project.timeEntries);
+  const heldFrom = project.statusChanges.find((change) => change.toStatus === "HOLD")?.fromStatus;
+  const resumeFrom = project.status === "HOLD" && heldFrom && isProjectStatus(heldFrom) && heldFrom !== "HOLD" ? heldFrom : null;
   const people = await listAssignablePeople();
   const currencies = finance ? await getActiveCurrencies() : [];
   const [clients, workTypes] = await Promise.all([getActiveClients(), getActiveWorkTypes()]);
-  const employees = people.filter((p) => p.role === "EMPLOYEE");
+  const employees =
+    user.role === "MANAGER"
+      ? await listDirectReportUsers(user.id)
+      : people.filter((person) => TASK_ASSIGNEE_ROLES.includes(person.role));
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "team", label: "Team" },
@@ -111,6 +120,7 @@ export default async function ProjectDetailPage({
           status={project.status}
           changedByName={project.statusChangedBy?.name}
           changedAt={project.statusChangedAt}
+          resumeFrom={resumeFrom}
         />
         <AlertPills
           eta={project.eta}
@@ -297,18 +307,27 @@ export default async function ProjectDetailPage({
           <Card className="p-6">
             <h2 className="mb-4 font-display text-xl">Add task</h2>
             <form action={asFormAction(createTask.bind(null, project.id))} className="grid gap-4 md:grid-cols-3">
-              <Field label="Task name">
-                <Input name="name" required />
+              <Field label="Work type">
+                <Select name="workType" required defaultValue={workTypes[0]?.code}>
+                  {workTypes.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.name}
+                    </option>
+                  ))}
+                </Select>
               </Field>
-              <Field label="Assigned employee">
+              <Field label="Assign to">
                 <Select name="assignedEmployeeId" defaultValue="">
                   <option value="">Unassigned</option>
                   {employees.map((employee) => (
                     <option key={employee.id} value={employee.id}>
-                      {employee.name}
+                      {employee.role === "EMPLOYEE" ? employee.name : `${employee.name} · ${ROLE_LABEL[employee.role]}`}
                     </option>
                   ))}
                 </Select>
+              </Field>
+              <Field label="Hours">
+                <Input name="hours" type="number" min="0.5" max="24" step="0.5" placeholder="Optional" />
               </Field>
               <Field label="Estimated hours">
                 <Input name="estimatedHours" type="number" step="0.5" defaultValue="8" />
@@ -400,9 +419,10 @@ export default async function ProjectDetailPage({
                   <th className="px-5 py-3">Date</th>
                   <th className="px-5 py-3">Employee</th>
                   <th className="px-5 py-3">Work type</th>
-                  <th className="px-5 py-3 text-right">Hours</th>
+                  <th className="px-5 py-3 text-right">Original</th>
+                  <th className="px-5 py-3 text-right">Billable</th>
                   <th className="px-5 py-3">Notes</th>
-                  <th className="px-5 py-3">Review</th>
+                  <th className="px-5 py-3">Approval</th>
                 </tr>
               </thead>
               <tbody>
@@ -411,18 +431,18 @@ export default async function ProjectDetailPage({
                     <td className="px-5 py-3">{formatDate(entry.date)}</td>
                     <td className="px-5 py-3">{entry.employee.name}</td>
                     <td className="px-5 py-3">{workTypeLabel(entry.workType)}</td>
+                    <td className="px-5 py-3 text-right">{formatHours(productivityHours(entry))}</td>
                     <td className="px-5 py-3 text-right">{formatHours(entry.hours)}</td>
                     <td className="px-5 py-3">{entry.notes || "—"}</td>
                     <td className="px-5 py-3">
-                      {entry.status === "REVIEWED" ? (
-                        "Reviewed"
-                      ) : (
-                        <form action={reviewHours.bind(null, entry.id)}>
-                          <Button size="sm" variant="outline">
-                            Review
-                          </Button>
-                        </form>
-                      )}
+                      <HourEntryEditor
+                        entryId={entry.id}
+                        hours={entry.hours}
+                        notes={entry.notes}
+                        status={entry.status}
+                        canApprove={user.role === "ADMIN" && requiresChangeApproval(entry.workType)}
+                        canEdit={user.role === "ADMIN" || isAdminLike(user.role) || entry.projectId === project.id && project.managerId === user.id}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -465,6 +485,7 @@ export default async function ProjectDetailPage({
           currencies={currencies}
           clients={clients}
           canEditFinance={finance}
+          resumeFrom={resumeFrom}
           defaults={{
             name: project.name,
             code: project.code,

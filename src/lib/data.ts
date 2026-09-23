@@ -99,15 +99,24 @@ export function hoursByWorkType<T extends { hours: number; workType: string }>(e
   let initial = 0;
   let changes = 0;
   let live = 0;
+  let management = 0;
   let other = 0;
   for (const entry of entries) {
     const bucket = workTypeBucket(entry.workType);
     if (bucket === "initial") initial += entry.hours;
     else if (bucket === "changes") changes += entry.hours;
     else if (bucket === "live") live += entry.hours;
+    else if (bucket === "management") management += entry.hours;
     else other += entry.hours;
   }
-  return { initial, changes, live, other, total: initial + changes + live + other };
+  return {
+    initial,
+    changes,
+    live,
+    management,
+    other,
+    total: initial + changes + live + management + other,
+  };
 }
 
 export function searchTokens(q: string) {

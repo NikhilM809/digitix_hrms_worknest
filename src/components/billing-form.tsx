@@ -18,6 +18,7 @@ type Row = {
   status: ProjectStatus;
   actualCompletionDate: Date | string | null;
   sellValue: number;
+  billableTotal: number;
   currencyCode: string;
   billingStatus: string;
   billed: boolean;
@@ -45,12 +46,12 @@ export function GenerateBillsForm({
   const billable = useMemo(() => rows.filter((row) => row.approved && !row.billed), [rows]);
   const [checked, setChecked] = useState<string[]>(() => billable.map((row) => row.id));
   const [amounts, setAmounts] = useState<Record<string, number>>(() =>
-    Object.fromEntries(billable.map((row) => [row.id, row.sellValue])),
+    Object.fromEntries(billable.map((row) => [row.id, row.billableTotal])),
   );
   const allChecked = billable.length > 0 && billable.every((row) => checked.includes(row.id));
   const selectedRows = billable.filter((row) => checked.includes(row.id));
   const openSelected = selectedRows.filter((row) => !row.closed);
-  const subtotal = selectedRows.reduce((sum, row) => sum + (amounts[row.id] ?? row.sellValue), 0);
+  const subtotal = selectedRows.reduce((sum, row) => sum + (amounts[row.id] ?? row.billableTotal), 0);
   const currency = selectedRows[0]?.currencyCode ?? billable[0]?.currencyCode ?? "";
 
   function toggle(id: string) {
@@ -90,8 +91,8 @@ export function GenerateBillsForm({
       <input type="hidden" name="billingMonth" value={month} />
       <input type="hidden" name="billingYear" value={year} />
       <p className="text-sm text-muted">
-        Each line starts with the project&apos;s overall value. Selected projects become one client invoice PDF, like the
-        monthly efforts bill.
+        Each invoice amount starts at the project value plus change hours and live hours at 20 each. Selected projects
+        become one client invoice PDF.
       </p>
       {openSelected.length ? (
         <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
@@ -144,7 +145,8 @@ export function GenerateBillsForm({
               <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Overall amount</th>
+              <th className="px-4 py-3 text-right">Project value</th>
+              <th className="px-4 py-3 text-right">Billable total</th>
               <th className="px-4 py-3 text-right">Invoice amount</th>
             </tr>
           </thead>
@@ -175,13 +177,14 @@ export function GenerateBillsForm({
                   {!row.closed ? <p className="mt-1 text-xs text-amber-700">Not closed</p> : null}
                 </td>
                 <td className="px-4 py-3 text-right">{formatMoney(row.sellValue, row.currencyCode)}</td>
+                <td className="px-4 py-3 text-right">{formatMoney(row.billableTotal, row.currencyCode)}</td>
                 <td className="px-4 py-3 text-right">
                   <Input
                     name={`amount_${row.id}`}
                     type="number"
                     min="0"
                     step="0.01"
-                    value={amounts[row.id] ?? row.sellValue}
+                    value={amounts[row.id] ?? row.billableTotal}
                     disabled={row.billed || !row.approved}
                     className="h-9 w-36 text-right"
                     onChange={(event) =>

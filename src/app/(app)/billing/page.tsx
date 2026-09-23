@@ -8,14 +8,14 @@ import { prisma } from "@/lib/db";
 import { hoursByWorkType, getSettings, projectSearchWhere } from "@/lib/data";
 import { ensureCurrencies } from "@/lib/currency";
 import { getActiveClients, getActiveInvoiceServices } from "@/lib/catalog";
-import { displayBillingStatus, totalsByCurrency } from "@/lib/finance";
+import { billableAmount, changesExceedInitialShare, displayBillingStatus, totalsByCurrency } from "@/lib/finance";
 import { formatHours, formatMonthYear } from "@/lib/format";
 import { ADMIN_LIKE_ROLES, requireRole } from "@/lib/permissions";
 
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; year?: string; client?: string; scope?: string; q?: string }>;
+  searchParams: Promise<{ month?: string; year?: string; client?: string; scope?: string; q?: string; over?: string }>;
 }) {
   await requireRole(...ADMIN_LIKE_ROLES);
   await ensureCurrencies();
@@ -26,6 +26,7 @@ export default async function BillingPage({
   const year = Number(params.year || now.getFullYear());
   const client = String(params.client || "");
   const q = String(params.q || "").trim();
+  const overOnly = params.over === "1";
   const scope = params.scope === "month" ? "month" : "all";
   const monthStart = startOfMonth(new Date(year, month - 1, 1));
   const monthEnd = endOfMonth(monthStart);
@@ -52,13 +53,16 @@ export default async function BillingPage({
     include: {
       manager: true,
       currency: true,
-      timeEntries: { select: { hours: true, workType: true } },
+      timeEntries: { select: { hours: true, workType: true, status: true } },
     },
     orderBy: [{ status: "asc" }, { eta: "asc" }],
   });
 
   const unbilledRows = unbilled.map((project) => {
-    const hours = hoursByWorkType(project.timeEntries);
+    const approvedEntries = project.timeEntries.filter(
+      (entry) => entry.status === "APPROVED" || entry.status === "REVIEWED",
+    );
+    const hours = hoursByWorkType(approvedEntries);
     return {
       id: project.id,
       code: project.code,
@@ -81,8 +85,11 @@ export default async function BillingPage({
       markedForBilling: project.billingStage === "APPROVED",
     };
   });
+  const visibleRows = overOnly
+    ? unbilledRows.filter((row) => changesExceedInitialShare(row.sellValue, row.changesHours))
+    : unbilledRows;
 
-  const hourTotals = unbilledRows.reduce(
+  const hourTotals = visibleRows.reduce(
     (sum, row) => ({
       initial: sum.initial + row.initialHours,
       changes: sum.changes + row.changesHours,
@@ -99,23 +106,33 @@ export default async function BillingPage({
       ...(client ? { clientName: client } : {}),
       ...projectSearchWhere(q),
     },
-    include: { invoices: true, currency: true },
+    include: {
+      invoices: true,
+      currency: true,
+      timeEntries: { select: { hours: true, workType: true, status: true } },
+    },
     orderBy: { actualCompletionDate: "desc" },
   });
-  const readyRows = ready.map((project) => ({
-    id: project.id,
-    code: project.code,
-    name: project.name,
-    clientName: project.clientName,
-    status: project.status,
-    actualCompletionDate: project.actualCompletionDate,
-    sellValue: project.sellValue,
-    currencyCode: project.currency?.code ?? "",
-    billingStatus: displayBillingStatus(project),
-    billed: false,
-    approved: true,
-    closed: project.status === "CLOSE",
-  }));
+  const readyRows = ready.map((project) => {
+    const hours = hoursByWorkType(
+      project.timeEntries.filter((entry) => entry.status === "APPROVED" || entry.status === "REVIEWED"),
+    );
+    return {
+      id: project.id,
+      code: project.code,
+      name: project.name,
+      clientName: project.clientName,
+      status: project.status,
+      actualCompletionDate: project.actualCompletionDate,
+      sellValue: project.sellValue,
+      billableTotal: billableAmount(project.sellValue, hours.changes, hours.live),
+      currencyCode: project.currency?.code ?? "",
+      billingStatus: displayBillingStatus(project),
+      billed: false,
+      approved: true,
+      closed: project.status === "CLOSE",
+    };
+  });
 
   const invoices = await prisma.invoice.findMany({
     where: { billingMonth: month, billingYear: year },
@@ -136,30 +153,30 @@ export default async function BillingPage({
     <div>
       <PageHeader
         title="Billing"
-        description="Review unbilled work, then generate one client invoice. Amounts default to each project's overall value."
+        description="Review unbilled work, then generate one client invoice. The billable total is the project value plus change and live hours at 20 each. Use the change filter to list projects whose change hours, at 20 each, are more than 20% of the project value."
         actions={
           <Link href="/billing/history" className="text-sm text-teal">
             Billing history
           </Link>
         }
       />
-      <form method="get" className="mb-4 grid gap-3 md:grid-cols-6">
-        <Input name="q" placeholder="Project IDs, comma separated" defaultValue={q} />
-        <Select name="month" defaultValue={String(month)}>
+      <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
+        <Input name="q" placeholder="Project IDs, comma separated" defaultValue={q} className="w-auto min-w-56" />
+        <Select name="month" defaultValue={String(month)} className="w-auto min-w-36">
           {Array.from({ length: 12 }, (_, i) => (
             <option key={i + 1} value={i + 1}>
               {formatMonthYear(i + 1, year).split(" ")[0]}
             </option>
           ))}
         </Select>
-        <Select name="year" defaultValue={String(year)}>
+        <Select name="year" defaultValue={String(year)} className="w-auto min-w-28">
           {[year - 1, year, year + 1].map((value) => (
             <option key={value} value={value}>
               {value}
             </option>
           ))}
         </Select>
-        <Select name="client" defaultValue={client}>
+        <Select name="client" defaultValue={client} className="w-auto min-w-40">
           <option value="">All clients</option>
           {clients.map((name) => (
             <option key={name} value={name}>
@@ -167,14 +184,18 @@ export default async function BillingPage({
             </option>
           ))}
         </Select>
-        <Select name="scope" defaultValue={scope}>
+        <Select name="scope" defaultValue={scope} className="w-auto min-w-44">
           <option value="all">All unbilled</option>
           <option value="month">Active in this month</option>
+        </Select>
+        <Select name="over" defaultValue={overOnly ? "1" : ""} className="w-auto min-w-72">
+          <option value="">All change levels</option>
+          <option value="1">Changes over 20% of project value</option>
         </Select>
         <button className="h-10 rounded-lg border border-line px-4 text-sm">Run report</button>
       </form>
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Unbilled projects" value={unbilledRows.length} />
+        <StatCard label="Unbilled projects" value={visibleRows.length} />
         <StatCard label="Initial hours" value={formatHours(hourTotals.initial)} />
         <StatCard label="Changes hours" value={formatHours(hourTotals.changes)} />
         <StatCard label="Total hours" value={formatHours(hourTotals.total)} />
@@ -186,10 +207,10 @@ export default async function BillingPage({
       </div>
       <Card className="p-6">
         <UnbilledBillingReport
-          key={`${month}-${year}-${client}-${scope}-${q}`}
+          key={`${month}-${year}-${client}-${scope}-${q}-${overOnly ? "over" : "all"}`}
           month={month}
           year={year}
-          rows={unbilledRows}
+          rows={visibleRows}
         />
       </Card>
       <Card className="mt-6 p-6">
@@ -197,7 +218,7 @@ export default async function BillingPage({
         {readyRows.length === 0 ? (
           <p className="text-sm text-muted">
             Mark unbilled projects above. They will appear here so you can generate one client invoice. Amounts default
-            to the overall project value.
+            to the project value plus change and live hours at 20 each.
           </p>
         ) : (
           <GenerateBillsForm

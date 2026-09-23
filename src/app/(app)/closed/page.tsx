@@ -6,6 +6,7 @@ import { formatDate, formatHours, formatMoney } from "@/lib/format";
 import { billingStatusForProject } from "@/lib/finance";
 import { BillingBadge, StatusBadge } from "@/components/status";
 import { Card, EmptyState, Input, PageHeader } from "@/components/ui";
+import { managerProjectWhere } from "@/lib/direct-reports";
 import { withVisibleProjects } from "@/lib/project-access";
 
 export default async function ClosedProjectsPage({
@@ -16,14 +17,20 @@ export default async function ClosedProjectsPage({
   const user = await requireRole(...STAFF_ROLES);
   const { q = "" } = await searchParams;
   const finance = canSeeFinance(user.role);
+  const managerScope = user.role === "MANAGER" ? await managerProjectWhere(user.id) : {};
   const projects = await prisma.project.findMany({
     where: withVisibleProjects(user.role, {
-      status: "CLOSE",
-      ...(q
-        ? {
-            OR: [{ name: { contains: q } }, { code: { contains: q } }, { clientName: { contains: q } }],
-          }
-        : {}),
+      AND: [
+        {
+          status: "CLOSE",
+          ...(q
+            ? {
+                OR: [{ name: { contains: q } }, { code: { contains: q } }, { clientName: { contains: q } }],
+              }
+            : {}),
+        },
+        ...(Object.keys(managerScope).length ? [managerScope] : []),
+      ],
     }),
     include: {
       manager: true,

@@ -206,6 +206,7 @@ async function main() {
         date: requiredDate(entry.date),
         workType: entry.workType,
         hours: entry.hours,
+        originalHours: entry.hours,
         notes: entry.notes,
         status: HourStatus.REVIEWED,
         reviewedById: arjun.id,

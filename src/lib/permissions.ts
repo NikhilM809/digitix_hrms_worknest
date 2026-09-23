@@ -14,6 +14,7 @@ export const ADMIN_LIKE_ROLES: Role[] = [Role.ADMIN, Role.SENIOR_MANAGER];
 export const STAFF_ROLES: Role[] = [Role.ADMIN, Role.SENIOR_MANAGER, Role.MANAGER];
 export const ASSIGNABLE_ROLES: Role[] = [Role.ADMIN, Role.SENIOR_MANAGER, Role.MANAGER, Role.EMPLOYEE];
 export const PROJECT_MANAGER_ROLES: Role[] = [Role.ADMIN, Role.SENIOR_MANAGER, Role.MANAGER];
+export const TASK_ASSIGNEE_ROLES: Role[] = [Role.EMPLOYEE, Role.MANAGER, Role.SENIOR_MANAGER];
 
 export function isAdminLike(role: Role) {
   return role === Role.ADMIN || role === Role.SENIOR_MANAGER;

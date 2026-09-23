@@ -2,15 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Role, ProjectStatus } from "@prisma/client";
+import { Role, ProjectStatus, TrackingStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { splitEstimatedHours } from "@/lib/work-types";
 import { nextProjectCode } from "@/lib/data";
 import { getDefaultCurrency } from "@/lib/currency";
 import { notifyAdmins, notifyManagersOfProject, notifyUsers } from "@/lib/notify";
-import { ActionError, ADMIN_LIKE_ROLES, STAFF_ROLES, assertRole, isAdminLike, requireUser } from "@/lib/permissions";
-import { canSelectCancel, isInactiveStatus, statusesAvailable } from "@/lib/project-status";
+import { ActionError, ADMIN_LIKE_ROLES, PROJECT_MANAGER_ROLES, STAFF_ROLES, assertRole, isAdminLike, requireUser } from "@/lib/permissions";
+import { managerCanAccessProject } from "@/lib/direct-reports";
+import { isTrackingStatus } from "@/lib/hour-approval";
+import { holdResumeStatuses } from "@/lib/hold-resume";
+import { isInactiveStatus, statusesAvailable } from "@/lib/project-status";
 import { PROJECT_STATUS_LABEL } from "@/lib/constants";
 
 const projectSchema = z.object({
@@ -53,12 +56,19 @@ function readHourSplit(formData: FormData, estimatedHours: number) {
   };
 }
 
-function statusTransitionError(from: ProjectStatus, to: ProjectStatus) {
-  if (to === "CANCEL" && !canSelectCancel(from)) {
-    return "Cancelled is only available after initial bidding, while the project is still in Bid.";
+async function allowedStatuses(projectId: string, current: ProjectStatus) {
+  if (current !== "HOLD") return statusesAvailable(current);
+  const resume = await holdResumeStatuses([projectId]);
+  return statusesAvailable(current, resume.get(projectId) ?? null);
+}
+
+function statusTransitionError(from: ProjectStatus, to: ProjectStatus, allowed: ProjectStatus[]) {
+  if (from === to) return null;
+  if (to === "BID" && !allowed.includes("BID")) {
+    return "Bid cannot be selected again after the project has moved on.";
   }
-  if (!statusesAvailable(from).includes(to)) {
-    return "That status change is not allowed.";
+  if (!allowed.includes(to)) {
+    return "Move status forward: Bid, Need to Start, Script WIP, Changes, then Live. After Live it can return to Changes.";
   }
   return null;
 }
@@ -231,7 +241,7 @@ export async function updateProject(projectId: string, formData: FormData) {
   }
 
   const nextStatus = String(formData.get("status") || existing.status) as ProjectStatus;
-  const invalid = statusTransitionError(existing.status, nextStatus);
+  const invalid = statusTransitionError(existing.status, nextStatus, await allowedStatuses(projectId, existing.status));
   if (invalid) return { error: invalid };
 
   const eta = parseDate(String(formData.get("eta") || "")) ?? existing.eta;
@@ -342,7 +352,7 @@ export async function updateProjectStatus(projectId: string, formData: FormData)
   }
 
   const nextStatus = String(formData.get("status") || existing.status) as ProjectStatus;
-  const invalid = statusTransitionError(existing.status, nextStatus);
+  const invalid = statusTransitionError(existing.status, nextStatus, await allowedStatuses(projectId, existing.status));
   if (invalid) return { error: invalid };
 
   await prisma.project.update({
@@ -354,12 +364,55 @@ export async function updateProjectStatus(projectId: string, formData: FormData)
   return { ok: true };
 }
 
+export async function updateProjectManager(projectId: string, formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== Role.ADMIN) return { error: "Only an admin can change the project manager." };
+
+  const existing = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!existing) return { error: "Project not found." };
+
+  const managerId = String(formData.get("managerId") || "");
+  const manager = await prisma.user.findFirst({
+    where: { id: managerId, active: true, role: { in: PROJECT_MANAGER_ROLES } },
+  });
+  if (!manager) return { error: "Select a project manager." };
+
+  await prisma.project.update({ where: { id: projectId }, data: { managerId: manager.id } });
+  revalidateProject(projectId);
+  revalidatePath("/team");
+  return { ok: true };
+}
+
+export async function updateTrackingStatus(projectId: string, formData: FormData) {
+  const user = await requireUser();
+  const existing = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { assignments: { select: { employeeId: true } } },
+  });
+  if (!existing) return { error: "Project not found." };
+
+  if (user.role === Role.MANAGER && !(await managerCanAccessProject(user.id, projectId))) {
+    return { error: "You can only update status on your projects or your direct reports' projects." };
+  }
+
+  const nextStatus = String(formData.get("trackingStatus") || "");
+  if (!isTrackingStatus(nextStatus)) return { error: "Choose a valid status." };
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { trackingStatus: nextStatus as TrackingStatus },
+  });
+  revalidateProject(projectId);
+  revalidatePath("/billing");
+  return { ok: true };
+}
+
 export async function closeProject(projectId: string) {
   const user = await requireUser();
   assertRole(user, STAFF_ROLES);
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) throw new ActionError("Project not found.");
-  const invalid = statusTransitionError(project.status, "CLOSE");
+  const invalid = statusTransitionError(project.status, "CLOSE", await allowedStatuses(projectId, project.status));
   if (invalid) throw new ActionError(invalid);
   await prisma.project.update({
     where: { id: projectId },

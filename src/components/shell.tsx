@@ -13,7 +13,6 @@ import {
   Sun,
   Timer,
   Users,
-  Wallet,
   Archive,
   ChartColumn,
   CalendarDays,
@@ -32,6 +31,7 @@ import {
   ScrollText,
   UserCheck,
   Clock,
+  Wallet,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Role } from "@prisma/client";
@@ -66,10 +66,8 @@ function buildNav(role: Role, hrmsRole?: RoleName, orgVisible = true): NavGroup[
   const adminLike = role === "ADMIN" || role === "SENIOR_MANAGER";
   const linked = Boolean(hrmsRole);
 
-  const overview: NavItem[] = [];
-  if (role !== "EMPLOYEE") {
-    overview.push({ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard });
-  }
+  const overview: NavItem[] =
+    role === "EMPLOYEE" ? [] : [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }];
 
   const people: NavItem[] = [];
   if (hrmsRole && canManageEmployees(hrmsRole)) {
@@ -112,24 +110,25 @@ function buildNav(role: Role, hrmsRole?: RoleName, orgVisible = true): NavGroup[
     work.push(
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/hours", label: "Hours", icon: Timer },
+      { href: "/team", label: "Team", icon: Users },
       { href: "/closed", label: "Closed projects", icon: Archive },
     );
   }
-  if (role === "MANAGER") {
-    work.push({ href: "/team", label: "Team hours", icon: Users });
+  if (role === "MANAGER" || role === "SENIOR_MANAGER") {
+    work.push({ href: "/my-tasks", label: "My tasks", icon: ClipboardList });
   }
   if (role === "EMPLOYEE") {
     work.push(
-      { href: "/my-projects", label: "My projects", icon: FolderKanban },
+      { href: "/my-projects", label: "Projects", icon: FolderKanban },
       { href: "/my-tasks", label: "My tasks", icon: ClipboardList },
       { href: "/my-hours", label: "My hours", icon: Timer },
     );
   }
   if (adminLike) {
-    work.push(
-      { href: "/billing", label: "Billing", icon: Wallet },
-      { href: "/reports", label: "Reports", icon: ChartColumn },
-    );
+    work.push({ href: "/reports", label: "Reports", icon: ChartColumn });
+  }
+  if (role === "ADMIN") {
+    work.push({ href: "/billing", label: "Billing", icon: Wallet });
   }
 
   const company: NavItem[] = [];

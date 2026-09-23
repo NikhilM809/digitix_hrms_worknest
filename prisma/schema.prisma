@@ -47,6 +47,15 @@ enum BillingStage {
 enum HourStatus {
   SUBMITTED
   REVIEWED
+  PENDING
+  APPROVED
+}
+
+enum TrackingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
 }
 
 model User {
@@ -66,6 +75,7 @@ model User {
   createdTasks    Task[]               @relation("TaskAssigner")
   timeEntries           TimeEntry[]
   reviewedHours         TimeEntry[]            @relation("HourReviewer")
+  editedHours           TimeEntry[]            @relation("HourEditor")
   notes                 ProjectNote[]
   notifications         Notification[]
   exports               ProjectExport[]
@@ -80,6 +90,8 @@ model Project {
   clientName           String
   description          String        @default("")
   status               ProjectStatus @default(BID)
+  trackingStatus       TrackingStatus @default(NOT_STARTED)
+  managementChargeHours Float        @default(0)
   managerId            String
   manager              User          @relation("ProjectManager", fields: [managerId], references: [id])
   sellValue            Float
@@ -163,14 +175,18 @@ model TimeEntry {
   employeeId   String
   employee     User       @relation(fields: [employeeId], references: [id])
   date         DateTime
-  workType     String
-  hours        Float
-  notes        String     @default("")
-  status       HourStatus @default(SUBMITTED)
-  reviewedById String?
-  reviewedBy   User?      @relation("HourReviewer", fields: [reviewedById], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  workType      String
+  hours         Float
+  originalHours Float      @default(0)
+  notes         String     @default("")
+  status        HourStatus @default(PENDING)
+  reviewedById  String?
+  reviewedBy    User?      @relation("HourReviewer", fields: [reviewedById], references: [id])
+  editedById    String?
+  editedBy      User?      @relation("HourEditor", fields: [editedById], references: [id])
+  editedAt      DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([projectId])
   @@index([employeeId])

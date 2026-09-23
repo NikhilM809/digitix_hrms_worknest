@@ -71,13 +71,13 @@ export default async function ReportsPage({
         title="Reports"
         description={`Billing through ${formatMonthYear(now.getMonth() + 1, now.getFullYear())}. Pending is project value minus billed. Amounts are never mixed across currencies.`}
       />
-      <form className="mb-4 flex flex-wrap gap-3">
-        <Select name="view" defaultValue={view}>
+      <form className="mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto">
+        <Select name="view" defaultValue={view} className="w-40 shrink-0">
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
           <option value="yearly">Yearly</option>
         </Select>
-        <Select name="currency" defaultValue={currency}>
+        <Select name="currency" defaultValue={currency} className="w-64 shrink-0">
           <option value="">All currencies (separate totals)</option>
           {currencies.map((item) => (
             <option key={item.id} value={item.code}>
@@ -85,7 +85,7 @@ export default async function ReportsPage({
             </option>
           ))}
         </Select>
-        <Select name="client" defaultValue={client}>
+        <Select name="client" defaultValue={client} className="w-56 shrink-0">
           <option value="">All clients</option>
           {clients.map((item) => (
             <option key={item.id} value={item.name}>
@@ -93,7 +93,7 @@ export default async function ReportsPage({
             </option>
           ))}
         </Select>
-        <button className="h-10 rounded-lg border border-line px-4 text-sm">Apply</button>
+        <button className="h-10 shrink-0 rounded-lg border border-line px-4 text-sm">Apply</button>
       </form>
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <CurrencyTotals title="Project value" totals={valueTotals} />

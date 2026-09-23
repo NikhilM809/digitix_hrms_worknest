@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { Role, TaskStatus } from "@prisma/client";
+import { addHours } from "@/actions/hours";
 import { prisma } from "@/lib/db";
+import { listDirectReportUsers, managerCanAccessProject } from "@/lib/direct-reports";
 import { notifyUsers } from "@/lib/notify";
 import { ActionError, STAFF_ROLES, assertRole, requireUser } from "@/lib/permissions";
 import { isInactiveStatus } from "@/lib/project-status";
@@ -21,13 +23,62 @@ async function ensureAssignment(projectId: string, employeeId: string, assignedB
   });
 }
 
+function todayValue() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+export async function createOwnTask(formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== Role.EMPLOYEE) return { error: "Only employees can add a task for themselves." };
+  formData.set("assignedEmployeeId", user.id);
+  const projectId = String(formData.get("projectId") ?? "");
+  return createTask(projectId, formData);
+}
+
 export async function createTask(projectId: string, formData: FormData) {
   const user = await requireUser();
-  assertRole(user, STAFF_ROLES);
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { error: "Task name is required." };
+  const workType = String(formData.get("workType") ?? "").trim();
+  const workTypeOption = workType
+    ? await prisma.workTypeOption.findFirst({ where: { code: workType, active: true } })
+    : null;
+  if (!workTypeOption) return { error: "Select a work type." };
+  const name = workTypeOption.name;
+
+  const hoursRaw = String(formData.get("hours") ?? "").trim();
+  const hours = hoursRaw ? Number(hoursRaw) : 0;
+  if (hoursRaw && (!hours || hours <= 0 || hours > 24)) {
+    return { error: "Enter hours between 0 and 24." };
+  }
+
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) return { error: "Project not found." };
+  if (isInactiveStatus(project.status)) return { error: "This project is closed or cancelled." };
 
   const assignedEmployeeId = String(formData.get("assignedEmployeeId") || "") || null;
+  if (user.role === Role.EMPLOYEE) {
+    if (assignedEmployeeId !== user.id) return { error: "You can only add a task for yourself." };
+  } else {
+    assertRole(user, STAFF_ROLES);
+  }
+
+  if (user.role === Role.MANAGER) {
+    if (!assignedEmployeeId) return { error: "Select a direct report." };
+    if (!(await managerCanAccessProject(user.id, projectId))) {
+      return { error: "You can only assign tasks on your projects or your direct reports' projects." };
+    }
+    const reports = await listDirectReportUsers(user.id);
+    if (!reports.some((person) => person.id === assignedEmployeeId)) {
+      return { error: "You can only assign tasks to your direct reports." };
+    }
+  } else if (assignedEmployeeId && user.role !== Role.EMPLOYEE) {
+    const employee = await prisma.user.findFirst({
+      where: { id: assignedEmployeeId, active: true },
+    });
+    if (!employee) return { error: "Select a person." };
+  }
+
+  if (hours > 0 && !assignedEmployeeId) return { error: "Select someone before logging hours." };
+
   const task = await prisma.task.create({
     data: {
       projectId,
@@ -47,17 +98,58 @@ export async function createTask(projectId: string, formData: FormData) {
 
   if (assignedEmployeeId) {
     await ensureAssignment(projectId, assignedEmployeeId, user.id);
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
-    await notifyUsers([assignedEmployeeId], {
-      title: "Task assigned",
-      message: `${task.name} on ${project?.name ?? "a project"}.`,
-      href: "/my-tasks",
-    });
+    if (assignedEmployeeId !== user.id) {
+      await notifyUsers([assignedEmployeeId], {
+        title: "Task assigned",
+        message: `${task.name} on ${project.name}.`,
+        href: "/my-tasks",
+      });
+    }
+  }
+
+  if (hours > 0 && assignedEmployeeId) {
+    const hoursForm = new FormData();
+    hoursForm.set("projectId", projectId);
+    hoursForm.set("taskId", task.id);
+    hoursForm.set("workType", workType);
+    hoursForm.set("hours", String(hours));
+    hoursForm.set("date", todayValue());
+    hoursForm.set("employeeId", assignedEmployeeId);
+    hoursForm.set("notes", name);
+    const logged = await addHours(hoursForm);
+    if (logged?.error) return logged;
   }
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/my-tasks");
+  revalidatePath("/my-hours");
+  revalidatePath("/team");
+  revalidatePath("/projects");
   return { ok: true };
+}
+
+function parseOptionalHours(formData: FormData) {
+  const hoursRaw = String(formData.get("hours") ?? "").trim();
+  if (!hoursRaw) return { hours: 0 };
+  const hours = Number(hoursRaw);
+  if (!hours || hours <= 0 || hours > 24) return { error: "Enter hours between 0 and 24." };
+  return { hours };
+}
+
+async function logTaskHours(task: { id: string; projectId: string; name: string }, employeeId: string, hours: number, notes: string) {
+  const workType = await prisma.workTypeOption.findFirst({
+    where: { active: true, OR: [{ name: task.name }, { code: task.name }] },
+  });
+  if (!workType) return { error: "This task has no work type, so hours cannot be logged." };
+  const hoursForm = new FormData();
+  hoursForm.set("projectId", task.projectId);
+  hoursForm.set("taskId", task.id);
+  hoursForm.set("workType", workType.code);
+  hoursForm.set("hours", String(hours));
+  hoursForm.set("date", todayValue());
+  hoursForm.set("employeeId", employeeId);
+  hoursForm.set("notes", notes || task.name);
+  return addHours(hoursForm);
 }
 
 export async function updateTask(taskId: string, formData: FormData) {
@@ -68,26 +160,44 @@ export async function updateTask(taskId: string, formData: FormData) {
   });
   if (!task) return { error: "Task not found." };
 
-  if (user.role === Role.EMPLOYEE) {
-    if (task.assignedEmployeeId !== user.id) {
-      return { error: "You can only update your own tasks." };
-    }
+  const updatingOwnTask =
+    task.assignedEmployeeId === user.id &&
+    (user.role === Role.EMPLOYEE || user.role === Role.MANAGER || user.role === Role.SENIOR_MANAGER);
+
+  if (user.role === Role.EMPLOYEE && !updatingOwnTask) {
+    return { error: "You can only update your own tasks." };
+  }
+
+  if (task.status === "COMPLETED") {
+    return { error: "This task is completed and can no longer be edited." };
+  }
+
+  if (updatingOwnTask) {
+    const parsedHours = parseOptionalHours(formData);
+    if ("error" in parsedHours) return parsedHours;
     const status = String(formData.get("status") || task.status) as TaskStatus;
     const notes = String(formData.get("notes") ?? task.notes);
     await prisma.task.update({
       where: { id: taskId },
       data: { status, notes },
     });
-    if (status === "COMPLETED" && task.status !== "COMPLETED") {
+    if (status === "COMPLETED") {
       await notifyUsers([task.project.managerId], {
         title: "Task completed",
         message: `${user.name} completed ${task.name} on ${task.project.name}.`,
         href: `/projects/${task.projectId}`,
       });
     }
+    if (parsedHours.hours > 0) {
+      const logged = await logTaskHours(task, user.id, parsedHours.hours, notes);
+      if (logged && "error" in logged && logged.error) return logged;
+    }
     revalidatePath(`/projects/${task.projectId}`);
     revalidatePath("/my-tasks");
-    return { ok: true };
+    revalidatePath("/my-hours");
+    revalidatePath("/hours");
+    revalidatePath("/projects");
+    return { ok: true, loggedHours: parsedHours.hours > 0 };
   }
 
   assertRole(user, STAFF_ROLES);

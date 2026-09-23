@@ -15,19 +15,18 @@ import { totalsByCurrency, remainingByCurrency } from "@/lib/finance";
 import { formatDate, formatHours, isEtaSoon, isOverdue } from "@/lib/format";
 import { auth } from "@/auth";
 import { isAdminLike, requireUser } from "@/lib/permissions";
+import { managerProjectWhere } from "@/lib/direct-reports";
 import { peopleOverviewStats } from "@/lib/people-sync";
 import { PeopleInsights, PeopleRecentActivity } from "@/components/people-insights";
 import { AddHoursForm } from "@/components/hours-form";
 import { HighlightStat, dayGreeting } from "@/components/studio-home";
-import { appHomePath } from "@/lib/home-path";
 import type { RoleName } from "@prisma/hrms-client";
 import { isInactiveStatus } from "@/lib/project-status";
 import { ProjectStatus, TaskStatus } from "@prisma/client";
-
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>;
+  searchParams: Promise<{ client?: string; tracking?: string; sort?: string; dir?: string; page?: string }>;
 }) {
   const user = await requireUser();
   const session = await auth();
@@ -36,9 +35,7 @@ export default async function DashboardPage({
   const peopleLinked = Boolean(session?.user?.hrmsRole);
   const hrmsRole = session?.user?.hrmsRole;
   const hrmsUserId = session?.user?.hrmsUserId;
-  if (user.role === "EMPLOYEE") {
-    redirect(appHomePath(user.role, hrmsRole));
-  }
+  if (user.role === "EMPLOYEE") redirect("/my-projects");
   if (isAdminLike(user.role)) {
     return <AdminDashboard client={client} peopleLinked={peopleLinked} name={user.name} />;
   }
@@ -193,9 +190,10 @@ async function ManagerDashboard({
 }) {
   const settings = await getSettings();
   const now = new Date();
+  const scope = await managerProjectWhere(userId);
   const [projects, peopleStats, workTypes] = await Promise.all([
     prisma.project.findMany({
-      where: { status: { notIn: ["CLOSE", "CANCEL"] } },
+      where: { status: { notIn: ["CLOSE", "CANCEL"] }, ...scope },
       include: {
         timeEntries: { select: { hours: true, employeeId: true } },
         assignments: { include: { employee: true } },
@@ -206,7 +204,7 @@ async function ManagerDashboard({
     peopleLinked ? peopleOverviewStats({ hrmsUserId, hrmsRole }) : Promise.resolve(null),
     getActiveWorkTypes(),
   ]);
-  const mine = projects.filter((project) => project.managerId === userId);
+  const mine = projects;
   const overdue = mine.filter((p) => isOverdue(p.eta, p.status)).length;
   const dueSoon = mine.filter((p) => isEtaSoon(p.eta, settings.etaWarningDays, p.status)).length;
   const teamTasks = mine.flatMap((project) => project.tasks.map((task) => ({ task, project })));

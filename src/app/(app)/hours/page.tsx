@@ -1,77 +1,123 @@
-import { reviewHours } from "@/actions/hours";
+import { endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { AddHoursForm } from "@/components/hours-form";
+import { HourEntryEditor } from "@/components/hour-entry-editor";
 import { AddWorkTypeForm } from "@/components/catalog-settings";
-import { Button, Card, PageHeader, Select } from "@/components/ui";
-import { HOUR_STATUS_LABEL, workTypeLabel } from "@/lib/constants";
+import { Card, PageHeader, Select, StatCard } from "@/components/ui";
+import { workTypeLabel } from "@/lib/constants";
+import { hoursByWorkType } from "@/lib/data";
 import { prisma } from "@/lib/db";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
+import { changesExceedInitialShare } from "@/lib/finance";
 import { formatDate, formatHours } from "@/lib/format";
+import { APPROVED_HOUR_STATUSES, PENDING_HOUR_STATUSES, productivityHours, requiresChangeApproval, sumProductivity } from "@/lib/hour-approval";
 import { STAFF_ROLES, isAdminLike, requireRole } from "@/lib/permissions";
-import { listAssignablePeople, listManagedTeamPeople } from "@/lib/people-sync";
+import { listDirectReportUsers, managerProjectWhere } from "@/lib/direct-reports";
 
 export default async function HoursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ employeeId?: string; projectId?: string; status?: string; client?: string }>;
+  searchParams: Promise<{
+    employeeId?: string;
+    projectId?: string;
+    status?: string;
+    client?: string;
+    workType?: string;
+    over?: string;
+  }>;
 }) {
   const user = await requireRole(...STAFF_ROLES);
-  const { employeeId = "", projectId = "", status = "", client = "" } = await searchParams;
+  const { employeeId = "", projectId = "", status = "", client = "", workType = "", over = "" } = await searchParams;
   const teamOnly = !isAdminLike(user.role);
+  const managerScope = teamOnly ? await managerProjectWhere(user.id) : {};
   const employees = teamOnly
-    ? await listManagedTeamPeople(user.id)
-    : await listAssignablePeople({ role: "EMPLOYEE" });
+    ? await listDirectReportUsers(user.id)
+    : await prisma.user.findMany({
+        where: { active: true, role: "EMPLOYEE" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
   const teamIds = employees.map((employee) => employee.id);
   const scopedEmployeeId =
     employeeId && (!teamOnly || teamIds.includes(employeeId)) ? employeeId : "";
-  const [entries, projects, tasks, workTypes, clients] = await Promise.all([
-    prisma.timeEntry.findMany({
-      where: {
-        ...(scopedEmployeeId
-          ? { employeeId: scopedEmployeeId }
-          : teamOnly
-            ? { employeeId: { in: teamIds.length ? teamIds : ["__none__"] } }
-            : {}),
-        ...(projectId ? { projectId } : {}),
-        ...(status ? { status: status as "SUBMITTED" } : {}),
-        ...((teamOnly || client)
-          ? {
-              project: {
-                ...(teamOnly ? { managerId: user.id } : {}),
-                ...(client ? { clientName: client } : {}),
-              },
-            }
-          : {}),
-      },
-      include: { employee: true, project: true, task: true },
-      orderBy: { date: "desc" },
-      take: 200,
-    }),
+  const overOnly = over === "1";
+  const [projects, tasks, workTypes, clients] = await Promise.all([
     prisma.project.findMany({
       where: {
         status: { notIn: ["CLOSE", "CANCEL"] },
-        ...(teamOnly ? { managerId: user.id } : {}),
+        ...managerScope,
       },
       orderBy: { name: "asc" },
     }),
     prisma.task.findMany({
-      where: teamOnly ? { project: { managerId: user.id } } : undefined,
+      where: teamOnly ? { project: managerScope } : undefined,
     }),
     getActiveWorkTypes(),
     getActiveClients(),
   ]);
-
+  const selectedWorkType = workTypes.some((item) => item.code === workType) ? workType : "";
+  const overProjectIds = overOnly
+    ? (
+        await prisma.project.findMany({
+          where: {
+            ...managerScope,
+            ...(client ? { clientName: client } : {}),
+            ...(projectId ? { id: projectId } : {}),
+          },
+          select: {
+            id: true,
+            sellValue: true,
+            timeEntries: {
+              where: { status: { in: APPROVED_HOUR_STATUSES } },
+              select: { hours: true, workType: true },
+            },
+          },
+        })
+      )
+        .filter((project) => changesExceedInitialShare(project.sellValue, hoursByWorkType(project.timeEntries).changes))
+        .map((project) => project.id)
+    : null;
+  const entries = await prisma.timeEntry.findMany({
+      where: {
+        ...(scopedEmployeeId ? { employeeId: scopedEmployeeId } : {}),
+        ...(selectedWorkType ? { workType: selectedWorkType } : {}),
+        ...(status === "PENDING" ? { status: { in: PENDING_HOUR_STATUSES } } : {}),
+        ...(status === "APPROVED" ? { status: { in: APPROVED_HOUR_STATUSES } } : {}),
+        ...(overProjectIds
+          ? { projectId: { in: overProjectIds } }
+          : {
+              ...(projectId ? { projectId } : {}),
+              ...((teamOnly || client)
+                ? {
+                    project: {
+                      ...managerScope,
+                      ...(client ? { clientName: client } : {}),
+                    },
+                  }
+                : {}),
+            }),
+      },
+      include: { employee: true, project: true, task: true },
+      orderBy: { date: "desc" },
+    });
+  const now = new Date();
+  const todayKey = now.toISOString().slice(0, 10);
+  const todayEntries = entries.filter((entry) => entry.date.toISOString().slice(0, 10) === todayKey);
+  const weekEntries = entries.filter(
+    (entry) => entry.date >= startOfWeek(now, { weekStartsOn: 1 }) && entry.date <= endOfWeek(now, { weekStartsOn: 1 }),
+  );
+  const monthEntries = entries.filter((entry) => entry.date >= startOfMonth(now) && entry.date <= endOfMonth(now));
   return (
     <div>
       <PageHeader
         title="Hours"
         description={
           teamOnly
-            ? "Review hours for your team only."
-            : "Employee enters hours. Manager reviews. Admin can see all."
+            ? "Review hours for your team. Totals follow the filters below."
+            : "All hours are listed here, and the totals follow the filters. Change hours stay pending until an admin approves them."
         }
       />
-      <form className="mb-4 grid gap-3 md:grid-cols-5">
-        <Select name="employeeId" defaultValue={scopedEmployeeId}>
+      <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
+        <Select name="employeeId" defaultValue={scopedEmployeeId} className="w-auto min-w-44">
           <option value="">All employees</option>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
@@ -79,7 +125,7 @@ export default async function HoursPage({
             </option>
           ))}
         </Select>
-        <Select name="client" defaultValue={client}>
+        <Select name="client" defaultValue={client} className="w-auto min-w-40">
           <option value="">All clients</option>
           {clients.map((item) => (
             <option key={item.id} value={item.name}>
@@ -87,7 +133,7 @@ export default async function HoursPage({
             </option>
           ))}
         </Select>
-        <Select name="projectId" defaultValue={projectId}>
+        <Select name="projectId" defaultValue={projectId} className="w-auto min-w-48">
           <option value="">All projects</option>
           {projects.map((project) => (
             <option key={project.id} value={project.id}>
@@ -95,13 +141,31 @@ export default async function HoursPage({
             </option>
           ))}
         </Select>
-        <Select name="status" defaultValue={status}>
-          <option value="">All statuses</option>
-          <option value="SUBMITTED">Submitted</option>
-          <option value="REVIEWED">Reviewed</option>
+        <Select name="workType" defaultValue={selectedWorkType} className="w-auto min-w-44">
+          <option value="">All work types</option>
+          {workTypes.map((item) => (
+            <option key={item.id} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </Select>
+        <Select name="status" defaultValue={status} className="w-auto min-w-40">
+          <option value="">All approvals</option>
+          <option value="PENDING">Pending approval</option>
+          <option value="APPROVED">Approved</option>
+        </Select>
+        <Select name="over" defaultValue={overOnly ? "1" : ""} className="w-auto min-w-72">
+          <option value="">All change levels</option>
+          <option value="1">Changes over 20% of project value</option>
         </Select>
         <button className="h-10 rounded-lg border border-line px-4 text-sm">Filter</button>
       </form>
+      <div className="mb-6 grid gap-4 sm:grid-cols-4">
+        <StatCard label="Today" value={formatHours(sumProductivity(todayEntries))} />
+        <StatCard label="This week" value={formatHours(sumProductivity(weekEntries))} />
+        <StatCard label="This month" value={formatHours(sumProductivity(monthEntries))} />
+        <StatCard label="Total" value={formatHours(sumProductivity(entries))} />
+      </div>
       <Card className="mb-6 p-6">
         <h2 className="mb-4 font-display text-xl">Log hours for someone</h2>
         <AddHoursForm
@@ -112,12 +176,6 @@ export default async function HoursPage({
           canChooseEmployee
         />
       </Card>
-      {isAdminLike(user.role) ? (
-        <Card className="mb-6 p-6">
-          <h2 className="mb-4 font-display text-xl">Add a work type</h2>
-          <AddWorkTypeForm />
-        </Card>
-      ) : null}
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
@@ -126,9 +184,10 @@ export default async function HoursPage({
               <th className="px-5 py-3">Employee</th>
               <th className="px-5 py-3">Project</th>
               <th className="px-5 py-3">Work type</th>
-              <th className="px-5 py-3 text-right">Hours</th>
+              <th className="px-5 py-3 text-right">Original hours</th>
+              <th className="px-5 py-3 text-right">Billable hours</th>
               <th className="px-5 py-3">Notes</th>
-              <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Approval</th>
             </tr>
           </thead>
           <tbody>
@@ -138,24 +197,30 @@ export default async function HoursPage({
                 <td className="px-5 py-3">{entry.employee.name}</td>
                 <td className="px-5 py-3">{entry.project.name}</td>
                 <td className="px-5 py-3">{workTypeLabel(entry.workType)}</td>
+                <td className="px-5 py-3 text-right">{formatHours(productivityHours(entry))}</td>
                 <td className="px-5 py-3 text-right">{formatHours(entry.hours)}</td>
                 <td className="px-5 py-3">{entry.notes || "—"}</td>
                 <td className="px-5 py-3">
-                  {entry.status === "REVIEWED" ? (
-                    HOUR_STATUS_LABEL.REVIEWED
-                  ) : (
-                    <form action={reviewHours.bind(null, entry.id)}>
-                      <Button size="sm" variant="outline">
-                        Review
-                      </Button>
-                    </form>
-                  )}
+                  <HourEntryEditor
+                    entryId={entry.id}
+                    hours={entry.hours}
+                    notes={entry.notes}
+                    status={entry.status}
+                    canApprove={user.role === "ADMIN" && requiresChangeApproval(entry.workType)}
+                    canEdit={user.role === "ADMIN" || entry.employeeId === user.id || isAdminLike(user.role) || teamOnly}
+                  />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </Card>
+      {isAdminLike(user.role) ? (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-4 font-display text-xl">Add a work type</h2>
+          <AddWorkTypeForm />
+        </Card>
+      ) : null}
     </div>
   );
 }

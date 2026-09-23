@@ -4,6 +4,7 @@ import {
   TaskStatus,
   HourStatus,
   InvoiceStatus,
+  TrackingStatus,
 } from "@prisma/client";
 import type { RoleName } from "@prisma/hrms-client";
 
@@ -42,6 +43,8 @@ export const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   "CANCEL",
 ];
 
+export const TASK_STATUS_ORDER: TaskStatus[] = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED"];
+
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   NOT_STARTED: "Not Started",
   IN_PROGRESS: "In Progress",
@@ -67,9 +70,25 @@ export function workTypeLabel(code: string) {
 }
 
 export const HOUR_STATUS_LABEL: Record<HourStatus, string> = {
-  SUBMITTED: "Submitted",
-  REVIEWED: "Reviewed",
+  SUBMITTED: "Pending approval",
+  REVIEWED: "Approved",
+  PENDING: "Pending approval",
+  APPROVED: "Approved",
 };
+
+export const TRACKING_STATUS_LABEL: Record<TrackingStatus, string> = {
+  NOT_STARTED: "Not Started",
+  IN_PROGRESS: "In Progress",
+  ON_HOLD: "On Hold",
+  COMPLETED: "Completed",
+};
+
+export const TRACKING_STATUS_ORDER: TrackingStatus[] = [
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "ON_HOLD",
+  "COMPLETED",
+];
 
 export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   GENERATED: "Invoice Generated",

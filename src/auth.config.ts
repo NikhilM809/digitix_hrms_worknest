@@ -4,13 +4,7 @@ import { appHomePath } from "@/lib/home-path";
 type Role = "ADMIN" | "SENIOR_MANAGER" | "MANAGER" | "EMPLOYEE";
 const ADMIN_LIKE: Role[] = ["ADMIN", "SENIOR_MANAGER"];
 
-const ADMIN_PREFIXES = [
-  "/employees",
-  "/reports",
-  "/sales",
-  "/billing",
-  "/settings",
-];
+const ADMIN_PREFIXES = ["/employees", "/reports", "/sales", "/billing", "/settings"];
 
 const STAFF_PREFIXES = ["/projects", "/closed", "/team", "/hours"];
 const EMPLOYEE_PREFIXES = ["/my-projects", "/my-tasks", "/my-hours"];
@@ -47,7 +41,7 @@ export const authConfig = {
       if (!isLoggedIn) return false;
 
       if (role === "EMPLOYEE" && (path === "/dashboard" || path.startsWith("/dashboard/"))) {
-        return Response.redirect(new URL(home, request.nextUrl));
+        return Response.redirect(new URL("/my-projects", request.nextUrl));
       }
 
       if (startsWithAny(path, ADMIN_PREFIXES) && (!role || !ADMIN_LIKE.includes(role))) {

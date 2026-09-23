@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
 import { hoursByWorkType } from "@/lib/data";
 import { ensureCatalog } from "@/lib/catalog";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
-import { ActionError, STAFF_ROLES, assertRole, isAdminLike, requireUser } from "@/lib/permissions";
+import { requireUser } from "@/lib/permissions";
+import { listDirectReportUsers, managerCanAccessProject } from "@/lib/direct-reports";
+import { requiresChangeApproval } from "@/lib/hour-approval";
 import { isInactiveStatus } from "@/lib/project-status";
 
 function parseDate(value?: string | null) {
@@ -44,35 +46,33 @@ export async function addHours(formData: FormData) {
     return { error: "Hours cannot be logged on a closed or cancelled project." };
   }
 
-  if (user.role === Role.MANAGER && project.managerId !== user.id) {
-    return { error: "You can only log hours on your team's projects." };
-  }
-
   const employeeId =
     user.role === Role.EMPLOYEE ? user.id : String(formData.get("employeeId") || user.id);
+  const task = taskId ? await prisma.task.findFirst({ where: { id: taskId, projectId } }) : null;
+  if (taskId && !task) return { error: "Select a valid task." };
+  if (task && user.role === Role.EMPLOYEE && task.assignedEmployeeId && task.assignedEmployeeId !== user.id) {
+    return { error: "You can only log hours on your tasks." };
+  }
+  const loggingAssignedTask = Boolean(task && task.assignedEmployeeId === employeeId);
+
+  if (user.role === Role.MANAGER && !(await managerCanAccessProject(user.id, project.id))) {
+    if (!(loggingAssignedTask && employeeId === user.id)) {
+      return { error: "You can only log hours on your projects or your direct reports' projects." };
+    }
+  }
+
   if (user.role !== Role.EMPLOYEE && employeeId !== user.id) {
-    const employee = await prisma.user.findFirst({
-      where: { id: employeeId, role: Role.EMPLOYEE, active: true },
+    const person = await prisma.user.findFirst({
+      where: { id: employeeId, active: true },
     });
-    if (!employee) return { error: "Select a valid employee." };
+    const allowedRole = person?.role === Role.EMPLOYEE || (loggingAssignedTask && (person?.role === Role.MANAGER || person?.role === Role.SENIOR_MANAGER));
+    if (!person || !allowedRole) return { error: "Select a valid person." };
   }
 
   if (user.role === Role.MANAGER && employeeId !== user.id) {
-    const onTeam = await prisma.projectAssignment.findFirst({
-      where: {
-        employeeId,
-        project: { managerId: user.id, status: { notIn: ["CLOSE", "CANCEL"] } },
-      },
-      select: { id: true },
-    });
-    if (!onTeam) return { error: "You can only log hours for your team." };
-  }
-
-  if (taskId) {
-    const task = await prisma.task.findFirst({ where: { id: taskId, projectId } });
-    if (!task) return { error: "Select a valid task." };
-    if (user.role === Role.EMPLOYEE && task.assignedEmployeeId && task.assignedEmployeeId !== user.id) {
-      return { error: "You can only log hours on your tasks." };
+    const reports = await listDirectReportUsers(user.id);
+    if (!reports.some((person) => person.id === employeeId)) {
+      return { error: "You can only log hours for your direct reports." };
     }
   }
 
@@ -84,9 +84,18 @@ export async function addHours(formData: FormData) {
       date,
       workType,
       hours,
+      originalHours: hours,
       notes,
+      status: requiresChangeApproval(workType) ? "PENDING" : "APPROVED",
     },
   });
+  if (requiresChangeApproval(workType)) {
+    await notifyAdmins({
+      title: "Change hours pending approval",
+      message: `${hours} change hours on ${project.name} are waiting for admin approval.`,
+      href: "/hours?status=PENDING",
+    });
+  }
 
   const allHours = hoursByWorkType([...project.timeEntries, { hours, workType }]);
   if (allHours.total > project.estimatedHours && project.timeEntries.reduce((s, e) => s + e.hours, 0) <= project.estimatedHours) {
@@ -116,21 +125,69 @@ export async function addHours(formData: FormData) {
   return { ok: true };
 }
 
-export async function reviewHours(entryId: string) {
+export async function saveHourEntry(formData: FormData) {
   const user = await requireUser();
-  assertRole(user, STAFF_ROLES);
+  const entryId = String(formData.get("entryId") ?? "");
+  const hours = Number(formData.get("hours"));
+  const notes = formData.has("notes") ? String(formData.get("notes") ?? "") : undefined;
+  const intent = String(formData.get("intent") || "save");
+
+  if (!entryId) return { error: "Hour entry not found." };
+  if (!hours || hours <= 0 || hours > 24) return { error: "Enter hours between 0 and 24." };
+
   const entry = await prisma.timeEntry.findUnique({
     where: { id: entryId },
-    include: { project: { select: { managerId: true } } },
+    include: { project: { select: { id: true, managerId: true, name: true } } },
   });
-  if (!entry) throw new ActionError("Entry not found.");
-  if (!isAdminLike(user.role) && entry.project.managerId !== user.id) {
-    throw new ActionError("You can only review your team's hours.");
+  if (!entry) return { error: "Hour entry not found." };
+
+  const isAdmin = user.role === Role.ADMIN;
+  const changeHours = requiresChangeApproval(entry.workType);
+  if (intent === "approve" && !isAdmin) {
+    return { error: "Only admins can approve change hours." };
   }
+  if (intent === "approve" && !changeHours) {
+    return { error: "Only change hours need admin approval." };
+  }
+  if (!isAdmin && user.role === Role.EMPLOYEE && entry.employeeId !== user.id) {
+    return { error: "You can only update your own hours." };
+  }
+  if (!isAdmin && user.role === Role.MANAGER && !(await managerCanAccessProject(user.id, entry.project.id))) {
+    return { error: "You can only update hours on your projects or your direct reports' projects." };
+  }
+
+  const approving = intent === "approve" && isAdmin;
   await prisma.timeEntry.update({
     where: { id: entryId },
-    data: { status: "REVIEWED", reviewedById: user.id },
+    data: {
+      hours,
+      ...(notes !== undefined ? { notes } : {}),
+      editedById: user.id,
+      editedAt: new Date(),
+      ...(approving
+        ? { status: "APPROVED", reviewedById: user.id }
+        : isAdmin || !changeHours
+          ? changeHours
+            ? {}
+            : { status: "APPROVED" }
+          : { status: "PENDING", reviewedById: null }),
+    },
   });
+
+  if (!approving && !isAdmin && changeHours) {
+    await notifyAdmins({
+      title: "Change hours updated and pending approval",
+      message: `${entry.project.name} change hours were edited and need admin approval.`,
+      href: "/hours?status=PENDING",
+    });
+  }
+
   revalidatePath("/hours");
+  revalidatePath("/my-hours");
+  revalidatePath("/dashboard");
+  revalidatePath("/my-projects");
+  revalidatePath("/projects");
+  revalidatePath("/billing");
   revalidatePath(`/projects/${entry.projectId}`);
+  return { ok: true };
 }

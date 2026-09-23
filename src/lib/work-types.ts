@@ -22,10 +22,9 @@ export function slugWorkTypeCode(name: string) {
 
 export function workTypeBucket(code: string) {
   const value = code.toUpperCase();
+  if (value === "PROJECT_MANAGEMENT" || value.includes("MANAGEMENT")) return "management";
   if (value === "CHANGES" || value === "CHANGES_QA" || value.startsWith("CHANGES")) return "changes";
   if (value === "INITIAL_SCRIPTING" || value === "INITIAL_QA" || value.startsWith("INITIAL")) return "initial";
-  if (value === "LIVE" || value === "PROJECT_MANAGEMENT" || value.includes("LIVE") || value.includes("MANAGEMENT")) {
-    return "live";
-  }
+  if (value === "LIVE" || value.includes("LIVE")) return "live";
   return "other";
 }

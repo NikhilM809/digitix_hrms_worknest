@@ -6,7 +6,7 @@ import { saveInvoicePdf } from "@/lib/invoice-files";
 import { formatInvoiceNumber, getSettings, nextYearlyInvoiceSequence } from "@/lib/data";
 import { getDefaultCurrency } from "@/lib/currency";
 import { notifyAdmins } from "@/lib/notify";
-import { ActionError, ADMIN_LIKE_ROLES, assertRole, requireUser } from "@/lib/permissions";
+import { ActionError, ADMIN_LIKE_ROLES, STAFF_ROLES, assertRole, requireUser } from "@/lib/permissions";
 
 export async function approveForInvoice(projectId: string) {
   const user = await requireUser();
@@ -396,4 +396,27 @@ export async function markBatchPaid(batchId: string) {
   for (const invoice of batch.invoices) {
     revalidatePath(`/projects/${invoice.projectId}`);
   }
+}
+
+export async function updateManagementCharge(formData: FormData) {
+  const user = await requireUser();
+  assertRole(user, STAFF_ROLES);
+  const projectId = String(formData.get("projectId") ?? "");
+  const hours = Number(formData.get("managementChargeHours"));
+  if (!projectId) return { error: "Project not found." };
+  if (!Number.isFinite(hours) || hours < 0) return { error: "Enter zero or a positive project management charge." };
+
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, managerId: true } });
+  if (!project) return { error: "Project not found." };
+  if (user.role === "MANAGER" && project.managerId !== user.id) {
+    return { error: "You can only update charges on your projects." };
+  }
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { managementChargeHours: hours },
+  });
+  revalidatePath("/billing");
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
 }

@@ -15,17 +15,19 @@ export function ProjectStatusForm({
   status,
   changedByName,
   changedAt,
+  resumeFrom = null,
   compact = false,
 }: {
   projectId: string;
   status: ProjectStatus;
   changedByName?: string | null;
   changedAt?: Date | string | null;
+  resumeFrom?: ProjectStatus | null;
   compact?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const options = statusesAvailable(status);
+  const options = statusesAvailable(status, resumeFrom);
 
   function onChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const next = event.target.value as ProjectStatus;

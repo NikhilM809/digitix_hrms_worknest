@@ -75,3 +75,20 @@ export function isCurrentOrPastPeriod(month: number, year: number, now = new Dat
 export function periodSortKey(month: number, year: number) {
   return year * 12 + month;
 }
+
+/** Change and live hours are billed at this rate on top of the project value. */
+export const EXTRA_HOUR_RATE = 20;
+
+/** Change-hour cost above this share of the project value is over the alert line. */
+export const CHANGE_COST_ALERT_RATIO = 0.2;
+
+export function billableAmount(initialCost: number, changesHours: number, liveHours: number) {
+  return initialCost + changesHours * EXTRA_HOUR_RATE + liveHours * EXTRA_HOUR_RATE;
+}
+
+/** True when approved change hours, at the extra-hour rate, are more than 20% of the project value. */
+export function changesExceedInitialShare(initialCost: number, changesHours: number) {
+  const changeCost = changesHours * EXTRA_HOUR_RATE;
+  if (initialCost <= 0) return changeCost > 0;
+  return changeCost > initialCost * CHANGE_COST_ALERT_RATIO;
+}

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ProjectStatus, Role } from "@prisma/client";
 import { createProject, updateProject } from "@/actions/projects";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
-import { PROJECT_STATUS_LABEL } from "@/lib/constants";
+import { PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
 import { splitEstimatedHours } from "@/lib/work-types";
 import { statusesAvailable } from "@/lib/project-status";
 
@@ -21,6 +21,7 @@ export function ProjectForm({
   clients,
   canEditFinance,
   defaults,
+  resumeFrom = null,
 }: {
   mode: "create" | "edit";
   projectId?: string;
@@ -28,6 +29,7 @@ export function ProjectForm({
   currencies?: { id: string; name: string; code: string; symbol: string }[];
   clients: ClientOption[];
   canEditFinance: boolean;
+  resumeFrom?: ProjectStatus | null;
   defaults?: {
     name: string;
     code: string;
@@ -147,7 +149,7 @@ export function ProjectForm({
         </Field>
         <Field label="Status">
           <Select name="status" defaultValue={defaults?.status ?? "BID"}>
-            {statusesAvailable(defaults?.status ?? "BID").map((status) => (
+            {(mode === "create" ? PROJECT_STATUS_ORDER : statusesAvailable(defaults?.status ?? "BID", resumeFrom)).map((status) => (
               <option key={status} value={status}>
                 {PROJECT_STATUS_LABEL[status]}
               </option>

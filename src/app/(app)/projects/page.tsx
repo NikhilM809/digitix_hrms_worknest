@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { ProjectStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getSettings, sumHours } from "@/lib/data";
+import { getSettings } from "@/lib/data";
 import { formatDate, formatHours, formatMoney } from "@/lib/format";
-import { PAGE_SIZE, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
-import { PROJECT_MANAGER_ROLES, STAFF_ROLES, canCreateProject, canSeeFinance, requireRole } from "@/lib/permissions";
+import { PAGE_SIZE, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER, ROLE_LABEL } from "@/lib/constants";
+import { PROJECT_MANAGER_ROLES, STAFF_ROLES, TASK_ASSIGNEE_ROLES, canCreateProject, canSeeFinance, requireRole } from "@/lib/permissions";
+import { listDirectReportUsers, managerProjectWhere } from "@/lib/direct-reports";
 import { withVisibleProjects } from "@/lib/project-access";
+import { holdResumeStatuses } from "@/lib/hold-resume";
 import { listAssignablePeople } from "@/lib/people-sync";
-import { getActiveClients } from "@/lib/catalog";
+import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
+import { sumProductivity } from "@/lib/hour-approval";
 import { AlertPills } from "@/components/status";
+import { ProjectManagerForm } from "@/components/project-manager-form";
 import { ProjectStatusForm } from "@/components/project-status-form";
+import { AddProjectHours } from "@/components/add-project-hours";
+import { TeamAssignForm } from "@/components/team-assign-form";
 import { Button, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -27,30 +33,36 @@ export default async function ProjectsPage({
   const client = String(params.client || "");
   const managerId = String(params.managerId || "");
   const employeeId = String(params.employeeId || "");
+  const exportDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
   const page = Math.max(1, Number(params.page || 1));
   const finance = canSeeFinance(user.role);
   const settings = await getSettings();
 
+  const managerScope = user.role === "MANAGER" ? await managerProjectWhere(user.id) : {};
   const where = withVisibleProjects(user.role, {
-    ...(tab !== "ALL" && tab !== "CLOSE" && tab !== "CANCEL" ? { status: tab as ProjectStatus } : {}),
-    ...(tab === "ALL" ? { status: { notIn: ["CLOSE" as const, "CANCEL" as const] } } : {}),
-    ...(tab === "CLOSE" ? { status: "CLOSE" as const } : {}),
-    ...(tab === "CANCEL" ? { status: "CANCEL" as const } : {}),
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { code: { contains: q } },
-            { clientName: { contains: q } },
-          ],
-        }
-      : {}),
-    ...(client ? { clientName: client } : {}),
-    ...(managerId ? { managerId } : {}),
-    ...(employeeId ? { assignments: { some: { employeeId } } } : {}),
+    AND: [
+      {
+        ...(tab !== "ALL" && tab !== "CLOSE" && tab !== "CANCEL" ? { status: tab as ProjectStatus } : {}),
+        ...(tab === "ALL" ? { status: { notIn: ["CLOSE" as const, "CANCEL" as const] } } : {}),
+        ...(tab === "CLOSE" ? { status: "CLOSE" as const } : {}),
+        ...(tab === "CANCEL" ? { status: "CANCEL" as const } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q } },
+                { code: { contains: q } },
+                { clientName: { contains: q } },
+              ],
+            }
+          : {}),
+        ...(client ? { clientName: client } : {}),
+        ...(managerId ? { managerId } : {}),
+        ...(employeeId ? { assignments: { some: { employeeId } } } : {}),
+      },
+      ...(Object.keys(managerScope).length ? [managerScope] : []),
+    ],
   });
-
-  const [total, projects, managers, employees, clients] = await Promise.all([
+  const [total, projects, managers, employees, assignees, clients, workTypes, assignableProjects] = await Promise.all([
     prisma.project.count({ where }),
     prisma.project.findMany({
       where,
@@ -58,7 +70,7 @@ export default async function ProjectsPage({
         manager: true,
         currency: true,
         statusChangedBy: true,
-        timeEntries: { select: { hours: true } },
+        timeEntries: { select: { hours: true, originalHours: true } },
         invoices: finance ? true : false,
       },
       orderBy: { eta: "asc" },
@@ -66,11 +78,22 @@ export default async function ProjectsPage({
       take: PAGE_SIZE,
     }),
     listAssignablePeople({ role: { in: PROJECT_MANAGER_ROLES } }),
-    listAssignablePeople({ role: "EMPLOYEE" }),
+    user.role === "MANAGER" ? listDirectReportUsers(user.id) : listAssignablePeople({ role: "EMPLOYEE" }),
+    user.role === "MANAGER"
+      ? listDirectReportUsers(user.id)
+      : listAssignablePeople({ role: { in: TASK_ASSIGNEE_ROLES } }),
     getActiveClients(),
+    getActiveWorkTypes(),
+    prisma.project.findMany({
+      where: { status: { notIn: ["CLOSE", "CANCEL"] }, ...managerScope },
+      select: { id: true, name: true, code: true },
+      orderBy: { code: "asc" },
+    }),
   ]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const workTypeOptions = workTypes.map((item) => ({ code: item.code, name: item.name }));
+  const holdResume = await holdResumeStatuses(projects.filter((project) => project.status === "HOLD").map((project) => project.id));
 
   return (
     <div>
@@ -78,11 +101,20 @@ export default async function ProjectsPage({
         title="Projects"
         description="Track every job from bid to close."
         actions={
-          canCreateProject(user.role) ? (
-            <Link href="/projects/new">
-              <Button>New project</Button>
-            </Link>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            <form action="/api/hours/daily-export" className="flex flex-wrap items-center gap-2">
+              <Input name="from" type="date" defaultValue={exportDate} aria-label="Start date" className="w-40" />
+              <Input name="to" type="date" defaultValue={exportDate} aria-label="End date" className="w-40" />
+              <Button type="submit" variant="outline">
+                Export hours
+              </Button>
+            </form>
+            {canCreateProject(user.role) ? (
+              <Link href="/projects/new">
+                <Button>New project</Button>
+              </Link>
+            ) : null}
+          </div>
         }
       />
       <div className="mb-4 flex flex-wrap gap-2">
@@ -136,6 +168,17 @@ export default async function ProjectsPage({
           Filter
         </Button>
       </form>
+      <Card className="mb-6 p-6">
+        <h2 className="mb-4 font-display text-xl">Assign a task</h2>
+        <TeamAssignForm
+          employees={assignees.map((person) => ({
+            id: person.id,
+            name: person.role === "EMPLOYEE" ? person.name : `${person.name} · ${ROLE_LABEL[person.role]}`,
+          }))}
+          projects={assignableProjects}
+          workTypes={workTypes.map((item) => ({ code: item.code, name: item.name }))}
+        />
+      </Card>
       <Card className="overflow-x-auto">
         {projects.length === 0 ? (
           <EmptyState title="No projects" description="Nothing matches these filters." />
@@ -151,11 +194,12 @@ export default async function ProjectsPage({
                 {finance ? <th className="px-5 py-3 text-right">Project value</th> : null}
                 <th className="px-5 py-3 text-right">Est. hours</th>
                 <th className="px-5 py-3 text-right">Actual hours</th>
+                <th className="px-5 py-3">Log hours</th>
               </tr>
             </thead>
             <tbody>
               {projects.map((project) => {
-                const actual = sumHours(project.timeEntries);
+                const actual = sumProductivity(project.timeEntries);
                 return (
                   <tr key={project.id} className="border-t border-line">
                     <td className="px-5 py-3">
@@ -174,7 +218,18 @@ export default async function ProjectsPage({
                       </div>
                     </td>
                     <td className="px-5 py-3">{project.clientName}</td>
-                    <td className="px-5 py-3">{project.manager.name}</td>
+                    <td className="px-5 py-3">
+                      {user.role === "ADMIN" ? (
+                        <ProjectManagerForm
+                          projectId={project.id}
+                          managerId={project.managerId}
+                          managerName={project.manager.name}
+                          managers={managers.map((manager) => ({ id: manager.id, name: manager.name }))}
+                        />
+                      ) : (
+                        project.manager.name
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       <ProjectStatusForm
                         compact
@@ -182,6 +237,7 @@ export default async function ProjectsPage({
                         status={project.status}
                         changedByName={project.statusChangedBy?.name}
                         changedAt={project.statusChangedAt}
+                        resumeFrom={holdResume.get(project.id) ?? null}
                       />
                     </td>
                     <td className="px-5 py-3">{formatDate(project.eta)}</td>
@@ -192,6 +248,9 @@ export default async function ProjectsPage({
                     ) : null}
                     <td className="px-5 py-3 text-right">{formatHours(project.estimatedHours)}</td>
                     <td className="px-5 py-3 text-right">{formatHours(actual)}</td>
+                    <td className="px-5 py-3">
+                      <AddProjectHours projectId={project.id} projectName={project.name} workTypes={workTypeOptions} />
+                    </td>
                   </tr>
                 );
               })}
