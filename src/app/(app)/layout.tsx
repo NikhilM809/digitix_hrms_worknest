@@ -3,6 +3,9 @@ import { AppShell } from "@/components/shell";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { canViewOrgStructure, getOrgHierarchyVisibility } from "@hrms/lib/org-hierarchy-settings";
+import { getCompanyTimezone } from "@hrms/lib/company-timezone";
+import { setActiveTimeZone } from "@/lib/format";
+import { TimezoneSync } from "@/components/timezone-sync";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -15,11 +18,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     take: 12,
   });
 
-  const orgVisible = sessionUser.hrmsRole
-    ? canViewOrgStructure(sessionUser.hrmsRole, await getOrgHierarchyVisibility())
-    : false;
+  const [orgVisible, timeZone] = await Promise.all([
+    sessionUser.hrmsRole
+      ? canViewOrgStructure(sessionUser.hrmsRole, await getOrgHierarchyVisibility())
+      : Promise.resolve(false),
+    getCompanyTimezone(),
+  ]);
+  setActiveTimeZone(timeZone);
 
   return (
+    <TimezoneSync timeZone={timeZone}>
     <AppShell
       user={{
         name: sessionUser.name ?? "",
@@ -32,5 +40,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     >
       {children}
     </AppShell>
+    </TimezoneSync>
   );
 }

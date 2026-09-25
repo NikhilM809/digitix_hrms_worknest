@@ -23,8 +23,10 @@ async function ensureAssignment(projectId: string, employeeId: string, assignedB
   });
 }
 
-function todayValue() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+async function todayValue() {
+  const { getCompanyTimezone } = await import("@hrms/lib/company-timezone");
+  const { getDateStringInZone } = await import("@hrms/lib/timezone-utils");
+  return getDateStringInZone(new Date(), await getCompanyTimezone());
 }
 
 export async function createOwnTask(formData: FormData) {
@@ -113,7 +115,7 @@ export async function createTask(projectId: string, formData: FormData) {
     hoursForm.set("taskId", task.id);
     hoursForm.set("workType", workType);
     hoursForm.set("hours", String(hours));
-    hoursForm.set("date", todayValue());
+    hoursForm.set("date", await todayValue());
     hoursForm.set("employeeId", assignedEmployeeId);
     hoursForm.set("notes", name);
     const logged = await addHours(hoursForm);
@@ -146,7 +148,7 @@ async function logTaskHours(task: { id: string; projectId: string; name: string 
   hoursForm.set("taskId", task.id);
   hoursForm.set("workType", workType.code);
   hoursForm.set("hours", String(hours));
-  hoursForm.set("date", todayValue());
+  hoursForm.set("date", await todayValue());
   hoursForm.set("employeeId", employeeId);
   hoursForm.set("notes", notes || task.name);
   return addHours(hoursForm);

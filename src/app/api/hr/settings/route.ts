@@ -7,6 +7,7 @@ import {
   createAuditLog,
 } from "@hrms/lib/api-utils";
 import { companySettingsSchema } from "@hrms/lib/validations";
+import { DEFAULT_COMPANY_TIMEZONE } from "@hrms/lib/timezone-utils";
 
 export async function GET() {
   const { error } = await requireAuth(["ADMIN"]);
@@ -18,7 +19,11 @@ export async function GET() {
     settings = await prisma.companySettings.create({ data: {} });
   }
 
-  return apiSuccess(settings);
+  const zones = await prisma.$queryRaw<Array<{ timezone: string }>>`
+    SELECT "timezone" FROM "CompanySettings" WHERE "id" = ${settings.id} LIMIT 1
+  `;
+
+  return apiSuccess({ ...settings, timezone: zones[0]?.timezone || DEFAULT_COMPANY_TIMEZONE });
 }
 
 export async function PUT(req: NextRequest) {
@@ -28,6 +33,7 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = companySettingsSchema.parse(body);
+    const { timezone, ...settingsData } = parsed;
 
     if (parsed.topLevelEmployeeId) {
       const topLevel = await prisma.user.findUnique({
@@ -45,18 +51,22 @@ export async function PUT(req: NextRequest) {
       ? await prisma.companySettings.update({
           where: { id: existing.id },
           data: {
-            ...parsed,
+            ...settingsData,
             companyEmail: parsed.companyEmail || null,
             companyTan: parsed.companyTan || null,
           },
         })
       : await prisma.companySettings.create({
           data: {
-            ...parsed,
+            ...settingsData,
             companyEmail: parsed.companyEmail || null,
             companyTan: parsed.companyTan || null,
           },
         });
+
+    await prisma.$executeRaw`
+      UPDATE "CompanySettings" SET "timezone" = ${timezone} WHERE "id" = ${settings.id}
+    `;
 
     await createAuditLog({
       userId: user!.id,
@@ -66,7 +76,7 @@ export async function PUT(req: NextRequest) {
       details: "Updated company settings",
     });
 
-    return apiSuccess(settings);
+    return apiSuccess({ ...settings, timezone });
   } catch (err) {
     if (err instanceof Error && err.name === "ZodError") {
       return apiError("Invalid settings data", 422);

@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { addHours } from "@/actions/hours";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { companyDateKey } from "@/lib/format";
 
 type TaskOption = { id: string; name: string; projectId: string };
 type ProjectOption = { id: string; name: string; code: string };
@@ -82,7 +83,7 @@ export function AddHoursForm({
         </Field>
       ) : null}
       <Field label="Date">
-        <Input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+        <Input name="date" type="date" required defaultValue={companyDateKey(new Date())} />
       </Field>
       <Field label="Work type">
         <Select name="workType" required defaultValue={workTypes[0]?.code ?? ""}>

@@ -22,7 +22,9 @@ export async function GET(request: Request) {
   if (!authz.ok) return authz.response;
 
   const url = new URL(request.url);
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  const { getCompanyTimezone } = await import("@hrms/lib/company-timezone");
+  const { getDateStringInZone } = await import("@hrms/lib/timezone-utils");
+  const today = getDateStringInZone(new Date(), await getCompanyTimezone());
   const fromValue = url.searchParams.get("from") || url.searchParams.get("date") || today;
   const toValue = url.searchParams.get("to") || fromValue;
   const from = parseDay(fromValue);

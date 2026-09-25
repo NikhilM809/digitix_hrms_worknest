@@ -9,7 +9,7 @@ import {
   resolveWorkingHours,
   weekKeyInZone,
 } from "@hrms/lib/attendance-hours";
-import { getCompanyTimezone } from "@hrms/lib/company-timezone";
+import { formatDateInZone, formatTimeInZone, getCompanyTimezone } from "@hrms/lib/company-timezone";
 
 async function getManagerUserFilter(userId: string) {
   const team = await prisma.user.findMany({
@@ -91,13 +91,13 @@ export async function GET(req: NextRequest) {
 
         return apiSuccess(
           rows.map((r) => ({
-            date: r.date.toISOString().split("T")[0],
+            date: formatDateInZone(r.date, timeZone),
             employeeId: r.user.employeeId,
             employeeName: `${r.user.firstName} ${r.user.lastName}`,
             department: r.user.department?.name ?? "-",
             status: r.status,
-            checkIn: r.checkIn?.toISOString() ?? "-",
-            checkOut: r.checkOut?.toISOString() ?? "-",
+            checkIn: r.checkIn ? formatTimeInZone(r.checkIn, timeZone) : "-",
+            checkOut: r.checkOut ? formatTimeInZone(r.checkOut, timeZone) : "-",
             workingHours: resolveWorkingHours(
               r.date,
               r.checkIn,
@@ -110,11 +110,13 @@ export async function GET(req: NextRequest) {
             monthlyHours:
               monthly.get(`${r.userId}:${monthKeyInZone(r.date, timeZone)}`) ?? 0,
             isLate: r.isLate,
+            lateReason: r.lateReason?.trim() || "",
           }))
         );
       }
 
       case "leave": {
+        const timeZone = await getCompanyTimezone();
         const records = await prisma.leaveRequest.findMany({
           where: {
             ...(userIdFilter ? { userId: userIdFilter } : {}),
@@ -146,8 +148,8 @@ export async function GET(req: NextRequest) {
             employeeName: `${r.user.firstName} ${r.user.lastName}`,
             department: r.user.department?.name ?? "-",
             leaveType: r.leaveType.name,
-            fromDate: r.fromDate.toISOString().split("T")[0],
-            toDate: r.toDate.toISOString().split("T")[0],
+            fromDate: formatDateInZone(r.fromDate, timeZone),
+            toDate: formatDateInZone(r.toDate, timeZone),
             totalDays: r.totalDays,
             status: r.status,
             reason: r.reason,
@@ -210,7 +212,7 @@ export async function GET(req: NextRequest) {
             employmentType: r.employmentType,
             department: r.department?.name ?? "-",
             designation: r.designation?.name ?? "-",
-            joiningDate: r.joiningDate.toISOString().split("T")[0],
+            joiningDate: formatDateInZone(r.joiningDate, timeZone),
             weeklyHours: weekly.get(`${r.id}:${weekKey}`) ?? 0,
             monthlyHours: monthly.get(`${r.id}:${monthKey}`) ?? 0,
           }))
@@ -218,6 +220,7 @@ export async function GET(req: NextRequest) {
       }
 
       case "department": {
+        const timeZone = await getCompanyTimezone();
         if (user!.role === "MANAGER") {
           const teamUsers = await prisma.user.findMany({
             where: { OR: [{ managerId: user!.id }, { id: user!.id }], status: "ACTIVE" },
@@ -241,7 +244,7 @@ export async function GET(req: NextRequest) {
               totalEmployees: r._count.employees,
               activeEmployees: r.employees.length,
               isActive: r.isActive,
-              createdAt: r.createdAt.toISOString().split("T")[0],
+              createdAt: formatDateInZone(r.createdAt, timeZone),
             }))
           );
         }
@@ -264,7 +267,7 @@ export async function GET(req: NextRequest) {
             totalEmployees: r._count.employees,
             activeEmployees: r.employees.length,
             isActive: r.isActive,
-            createdAt: r.createdAt.toISOString().split("T")[0],
+            createdAt: formatDateInZone(r.createdAt, timeZone),
           }))
         );
       }

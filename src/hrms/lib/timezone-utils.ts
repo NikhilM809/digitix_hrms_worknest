@@ -1,5 +1,19 @@
 export const DEFAULT_COMPANY_TIMEZONE = "Asia/Kolkata";
 
+export const COMPANY_TIMEZONES = [
+  { value: "Asia/Kolkata", label: "India (IST, Asia/Kolkata)" },
+  { value: "Asia/Dubai", label: "Dubai (Asia/Dubai)" },
+  { value: "Asia/Singapore", label: "Singapore (Asia/Singapore)" },
+  { value: "Asia/Tokyo", label: "Tokyo (Asia/Tokyo)" },
+  { value: "Europe/London", label: "London (Europe/London)" },
+  { value: "Europe/Berlin", label: "Berlin (Europe/Berlin)" },
+  { value: "America/New_York", label: "New York (America/New_York)" },
+  { value: "America/Chicago", label: "Chicago (America/Chicago)" },
+  { value: "America/Los_Angeles", label: "Los Angeles (America/Los_Angeles)" },
+  { value: "Australia/Sydney", label: "Sydney (Australia/Sydney)" },
+  { value: "UTC", label: "UTC" },
+];
+
 /** Minutes since local midnight in the given IANA timezone. */
 export function getMinutesSinceMidnightInZone(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -53,19 +67,20 @@ export function attendanceDateFromString(dateStr: string) {
   return new Date(`${dateStr}T00:00:00.000Z`);
 }
 
+export function formatDateInZone(
+  date: Date | string,
+  timeZone: string = DEFAULT_COMPANY_TIMEZONE
+) {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const [year, month, day] = getDateStringInZone(new Date(date), timeZone).split("-");
+  return `${day}-${months[Number(month) - 1]}-${year}`;
+}
+
 export function formatDateTimeInZone(
   date: Date | string,
   timeZone: string = DEFAULT_COMPANY_TIMEZONE
 ) {
-  return new Intl.DateTimeFormat("en-IN", {
-    timeZone,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(new Date(date));
+  return `${formatDateInZone(date, timeZone)}, ${formatTimeInZone(date, timeZone)}`;
 }
 
 export function formatTimeInZone(

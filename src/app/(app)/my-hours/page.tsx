@@ -4,13 +4,13 @@ import { Card, PageHeader, StatCard } from "@/components/ui";
 import { workTypeLabel } from "@/lib/constants";
 import { productivityHours, sumProductivity } from "@/lib/hour-approval";
 import { prisma } from "@/lib/db";
-import { formatDate, formatHours } from "@/lib/format";
+import { companyDateKey, companyToday, formatDate, formatHours } from "@/lib/format";
 import { requireRole } from "@/lib/permissions";
 import { getActiveWorkTypes } from "@/lib/catalog";
 
 export default async function MyHoursPage() {
   const user = await requireRole("EMPLOYEE");
-  const now = new Date();
+  const now = companyToday();
   const [entries, projects, tasks, workTypes] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { employeeId: user.id },
@@ -24,7 +24,7 @@ export default async function MyHoursPage() {
     prisma.task.findMany({ where: { assignedEmployeeId: user.id } }),
     getActiveWorkTypes(),
   ]);
-  const today = entries.filter((e) => e.date.toISOString().slice(0, 10) === now.toISOString().slice(0, 10));
+  const today = entries.filter((e) => companyDateKey(e.date) === companyDateKey(now));
   const week = entries.filter(
     (e) => e.date >= startOfWeek(now, { weekStartsOn: 1 }) && e.date <= endOfWeek(now, { weekStartsOn: 1 }),
   );

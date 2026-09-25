@@ -1,8 +1,33 @@
 import { format, isAfter, isBefore, addDays, startOfDay } from "date-fns";
+import { DEFAULT_COMPANY_TIMEZONE, getDateStringInZone } from "@hrms/lib/timezone-utils";
+
+let activeTimeZone = DEFAULT_COMPANY_TIMEZONE;
+
+export function setActiveTimeZone(timeZone: string) {
+  if (timeZone) activeTimeZone = timeZone;
+}
+
+export function getActiveTimeZone() {
+  return activeTimeZone;
+}
+
+/** Today's calendar date in the company timezone, as a local Date for date-fns. */
+export function companyToday() {
+  const [year, month, day] = getDateStringInZone(new Date(), activeTimeZone).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function companyDateKey(value: Date | string) {
+  return getDateStringInZone(new Date(value), activeTimeZone);
+}
 
 export function formatDate(value?: Date | string | null) {
   if (!value) return "—";
-  return format(new Date(value), "dd-MMM-yyyy");
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const [year, month, day] = getDateStringInZone(date, activeTimeZone).split("-");
+  return `${day}-${months[Number(month) - 1]}-${year}`;
 }
 
 export function formatMonthYear(month: number, year: number) {
@@ -57,16 +82,17 @@ export function hoursProgress(actual: number, estimated: number) {
 /** Delivery overdue only while work is still in bid / not started / scripting. */
 const DELIVERY_TRACKED_STATUSES = new Set(["BID", "NEED_TO_START", "SCRIPT_WIP"]);
 
-export function isOverdue(eta: Date, status: string, now = new Date()) {
+export function isOverdue(eta: Date, status: string, now = companyToday()) {
   if (!DELIVERY_TRACKED_STATUSES.has(status)) return false;
-  return isAfter(startOfDay(now), startOfDay(eta));
+  return companyDateKey(now) > companyDateKey(eta);
 }
 
-export function isEtaSoon(eta: Date, days: number, status: string, now = new Date()) {
+export function isEtaSoon(eta: Date, days: number, status: string, now = companyToday()) {
   if (!DELIVERY_TRACKED_STATUSES.has(status)) return false;
-  const limit = addDays(startOfDay(now), days);
+  const today = startOfDay(now);
+  const limit = addDays(today, days);
   const etaDay = startOfDay(eta);
-  return !isAfter(startOfDay(now), etaDay) && !isAfter(etaDay, limit);
+  return !isAfter(today, etaDay) && !isAfter(etaDay, limit);
 }
 
 export function isHoursExceeded(actual: number, estimated: number) {

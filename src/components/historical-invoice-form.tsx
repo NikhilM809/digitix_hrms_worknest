@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { attachInvoicePdf, uploadHistoricalInvoice } from "@/actions/billing";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { formatMoney, formatMonthYear } from "@/lib/format";
+import { companyDateKey, companyToday, formatMoney, formatMonthYear } from "@/lib/format";
 import type { ProjectStatus } from "@prisma/client";
 
 export type HistoricalProject = {
@@ -43,7 +43,7 @@ export function HistoricalInvoiceUpload({
   const billedSelected = selectedRows.filter((row) => row.billed);
   const currency = selectedRows[0]?.currencyCode ?? visible[0]?.currencyCode ?? "";
   const subtotal = selectedRows.reduce((sum, row) => sum + row.sellValue, 0);
-  const now = new Date();
+  const now = companyToday();
 
   function toggle(id: string) {
     setSelected((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
@@ -79,7 +79,7 @@ export function HistoricalInvoiceUpload({
           <Input name="invoiceNumber" required placeholder="PP/DXL/2026/5" />
         </Field>
         <Field label="Invoice date">
-          <Input name="invoiceDate" type="date" required defaultValue={now.toISOString().slice(0, 10)} />
+          <Input name="invoiceDate" type="date" required defaultValue={companyDateKey(now)} />
         </Field>
         <Field label="Billing month">
           <Select name="billingMonth" defaultValue={String(now.getMonth() + 1)}>

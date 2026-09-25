@@ -142,12 +142,6 @@ export default async function BillingPage({
   const pendingTotals = totalsByCurrency(invoices.filter((row) => row.status === "GENERATED"), (row) => row.amount);
   const [catalogClients, invoiceServices] = await Promise.all([getActiveClients(), getActiveInvoiceServices()]);
   const clients = catalogClients.map((item) => item.name);
-  const exports = await prisma.projectExport.findMany({
-    where: { billingMonth: month, billingYear: year, exportType: "EFFORTS_TRACKER" },
-    include: { project: true, exportedBy: true },
-    orderBy: { exportedAt: "desc" },
-    take: 12,
-  });
 
   return (
     <div>
@@ -232,33 +226,6 @@ export default async function BillingPage({
           />
         )}
       </Card>
-      {exports.length > 0 ? (
-        <Card className="mt-6 overflow-x-auto">
-          <div className="border-b border-line px-5 py-4">
-            <h2 className="font-display text-xl">Tracker exports</h2>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
-              <tr>
-                <th className="px-5 py-3">Project</th>
-                <th className="px-5 py-3">Exported by</th>
-                <th className="px-5 py-3">Date</th>
-                <th className="px-5 py-3">Period</th>
-              </tr>
-            </thead>
-            <tbody>
-              {exports.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <td className="px-5 py-3">{row.project.name}</td>
-                  <td className="px-5 py-3">{row.exportedBy.name}</td>
-                  <td className="px-5 py-3">{row.exportedAt.toLocaleString("en-IN")}</td>
-                  <td className="px-5 py-3">{formatMonthYear(row.billingMonth, row.billingYear)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      ) : null}
     </div>
   );
 }

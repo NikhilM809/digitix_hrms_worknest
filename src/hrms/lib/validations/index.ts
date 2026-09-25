@@ -327,6 +327,14 @@ export const announcementSchema = z.object({
 
 export const companySettingsSchema = z.object({
   companyName: z.string().min(2, "Company name is required"),
+  timezone: z.string().refine((value) => {
+    try {
+      Intl.DateTimeFormat("en-IN", { timeZone: value }).format(new Date());
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Choose a valid timezone"),
   companyEmail: z.string().email("Invalid email").optional().or(z.literal("")),
   companyTan: z.string().optional().or(z.literal("")),
   companyLogo: z.string().optional(),

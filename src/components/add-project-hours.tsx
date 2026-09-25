@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { addHours } from "@/actions/hours";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { companyDateKey } from "@/lib/format";
 
 type WorkTypeOption = { code: string; name: string };
 
@@ -52,7 +53,7 @@ export function AddProjectHours({
           </div>
           <input type="hidden" name="projectId" value={projectId} />
           <Field label="Date">
-            <Input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+            <Input name="date" type="date" required defaultValue={companyDateKey(new Date())} />
           </Field>
           <Field label="Work type">
             <Select name="workType" required defaultValue={workTypes[0]?.code ?? ""}>

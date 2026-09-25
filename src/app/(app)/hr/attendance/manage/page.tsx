@@ -30,8 +30,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@hrms/components/ui/tabs";
 import { Switch } from "@hrms/components/ui/switch";
 import { fetchApi } from "@hrms/lib/api-client";
-import { canManageManualAttendance } from "@hrms/lib/permissions";
+import { canManageManualAttendance, canViewLateAttendance } from "@hrms/lib/permissions";
 import { DEFAULT_COMPANY_TIMEZONE, formatTimeInZone } from "@hrms/lib/timezone-utils";
+import { companyDateKey, companyToday, formatDate, getActiveTimeZone } from "@/lib/format";
 import type { RoleName } from "@prisma/hrms-client";
 
 interface EmployeeOption {
@@ -51,6 +52,11 @@ interface AttendanceRecord {
   isLate: boolean;
   lateReason?: string | null;
   notes?: string | null;
+  user?: {
+    employeeId: string;
+    firstName: string;
+    lastName: string;
+  };
 }
 
 interface AttendanceListResponse {
@@ -78,6 +84,13 @@ export default function ManageAttendancePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const role = session?.user?.role as RoleName | undefined;
+  const canViewLate = role ? canViewLateAttendance(role) : false;
+  const today = companyToday();
+  const [lateMonth, setLateMonth] = useState(today.getMonth() + 1);
+  const [lateYear, setLateYear] = useState(today.getFullYear());
+  const lateFrom = companyDateKey(new Date(lateYear, lateMonth - 1, 1));
+  const lateTo = companyDateKey(new Date(lateYear, lateMonth, 0));
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   const [userId, setUserId] = useState("");
   const [action, setAction] = useState<"check-in" | "check-out">("check-in");
@@ -94,6 +107,15 @@ export default function ManageAttendancePage() {
   const [backdateNotes, setBackdateNotes] = useState("");
   const [backdateLateReason, setBackdateLateReason] = useState("");
   const [backdateIsLate, setBackdateIsLate] = useState(false);
+
+  const { data: lateData, isLoading: lateLoading } = useQuery({
+    queryKey: ["attendance-late", lateMonth, lateYear],
+    queryFn: () =>
+      fetchApi<AttendanceListResponse>(
+        `/api/attendance?lateOnly=true&fromDate=${lateFrom}&toDate=${lateTo}&limit=100`
+      ),
+    enabled: canViewLate,
+  });
 
   const { data: employees = [], isLoading: employeesLoading } = useQuery({
     queryKey: ["employees-manual-attendance"],
@@ -571,6 +593,84 @@ export default function ManageAttendancePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {canViewLate && (
+        <Card glass>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Late arrivals</CardTitle>
+                <CardDescription>The comment an employee entered when they checked in late.</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  className="h-10 rounded-lg border border-line bg-paper px-3 text-sm"
+                  value={lateMonth}
+                  onChange={(event) => setLateMonth(Number(event.target.value))}
+                  aria-label="Month"
+                >
+                  {monthNames.map((name, index) => (
+                    <option key={name} value={index + 1}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-10 rounded-lg border border-line bg-paper px-3 text-sm"
+                  value={lateYear}
+                  onChange={(event) => setLateYear(Number(event.target.value))}
+                  aria-label="Year"
+                >
+                  {[lateYear - 1, lateYear, lateYear + 1].map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {lateLoading ? (
+              <Skeleton className="h-24 w-full rounded-xl" />
+            ) : lateData?.records.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-left text-muted-foreground">
+                      <th className="px-2 py-3 font-medium">Employee</th>
+                      <th className="px-2 py-3 font-medium">Date</th>
+                      <th className="px-2 py-3 font-medium">Check in</th>
+                      <th className="px-2 py-3 font-medium">Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lateData.records.map((record) => (
+                      <tr key={record.id} className="border-b border-border/30">
+                        <td className="px-2 py-3">
+                          <p className="font-medium">
+                            {record.user ? `${record.user.firstName} ${record.user.lastName}` : "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{record.user?.employeeId}</p>
+                        </td>
+                        <td className="px-2 py-3">{formatDate(record.date)}</td>
+                        <td className="px-2 py-3">
+                          {record.checkIn ? formatTimeInZone(record.checkIn, getActiveTimeZone()) : "—"}
+                        </td>
+                        <td className="px-2 py-3 text-muted-foreground">{record.lateReason || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No late check-ins for {monthNames[lateMonth - 1]} {lateYear}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </motion.div>
   );
 }

@@ -8,7 +8,7 @@ import { hoursByWorkType } from "@/lib/data";
 import { prisma } from "@/lib/db";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { changesExceedInitialShare } from "@/lib/finance";
-import { formatDate, formatHours } from "@/lib/format";
+import { companyDateKey, companyToday, formatDate, formatHours } from "@/lib/format";
 import { APPROVED_HOUR_STATUSES, PENDING_HOUR_STATUSES, productivityHours, requiresChangeApproval, sumProductivity } from "@/lib/hour-approval";
 import { STAFF_ROLES, isAdminLike, requireRole } from "@/lib/permissions";
 import { listDirectReportUsers, managerProjectWhere } from "@/lib/direct-reports";
@@ -99,9 +99,9 @@ export default async function HoursPage({
       include: { employee: true, project: true, task: true },
       orderBy: { date: "desc" },
     });
-  const now = new Date();
-  const todayKey = now.toISOString().slice(0, 10);
-  const todayEntries = entries.filter((entry) => entry.date.toISOString().slice(0, 10) === todayKey);
+  const now = companyToday();
+  const todayKey = companyDateKey(now);
+  const todayEntries = entries.filter((entry) => companyDateKey(entry.date) === todayKey);
   const weekEntries = entries.filter(
     (entry) => entry.date >= startOfWeek(now, { weekStartsOn: 1 }) && entry.date <= endOfWeek(now, { weekStartsOn: 1 }),
   );

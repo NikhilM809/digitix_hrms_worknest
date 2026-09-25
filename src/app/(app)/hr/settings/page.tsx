@@ -34,6 +34,7 @@ import {
   companySettingsSchema,
   type CompanySettingsInput,
 } from "@hrms/lib/validations";
+import { COMPANY_TIMEZONES, DEFAULT_COMPANY_TIMEZONE } from "@hrms/lib/timezone-utils";
 
 interface CompanySettings extends CompanySettingsInput {
   id: string;
@@ -62,6 +63,7 @@ export default function SettingsPage() {
     resolver: zodResolver(companySettingsSchema),
     defaultValues: {
       companyName: "Digitix Labs",
+      timezone: DEFAULT_COMPANY_TIMEZONE,
       companyEmail: "",
       companyTan: "",
       companyLogo: "",
@@ -90,6 +92,7 @@ export default function SettingsPage() {
     if (settings) {
       form.reset({
         companyName: settings.companyName,
+        timezone: settings.timezone || DEFAULT_COMPANY_TIMEZONE,
         companyEmail: settings.companyEmail ?? "",
         companyTan: settings.companyTan ?? "",
         companyLogo: settings.companyLogo ?? "",
@@ -293,6 +296,27 @@ export default function SettingsPage() {
               <CardDescription>Basic company profile details</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="timezone">Timezone</Label>
+                <Select
+                  value={form.watch("timezone") || DEFAULT_COMPANY_TIMEZONE}
+                  onValueChange={(value) => form.setValue("timezone", value, { shouldDirty: true })}
+                >
+                  <SelectTrigger id="timezone">
+                    <SelectValue placeholder="Select timezone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPANY_TIMEZONES.map((zone) => (
+                      <SelectItem key={zone.value} value={zone.value}>
+                        {zone.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Dates, hours, and attendance use this timezone. India is IST (Asia/Kolkata).
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="companyName">Company Name</Label>
                 <Input id="companyName" {...form.register("companyName")} />

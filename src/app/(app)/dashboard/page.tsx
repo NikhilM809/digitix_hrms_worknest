@@ -66,7 +66,7 @@ async function AdminDashboard({
       where: client ? { clientName: client } : {},
       include: { timeEntries: { select: { hours: true } }, invoices: true, currency: true },
     }),
-    peopleLinked ? peopleOverviewStats() : Promise.resolve(null),
+    peopleOverviewStats(),
   ]);
   await ensureCurrencies();
   const byStatus = (status: ProjectStatus) => projects.filter((p) => p.status === status).length;
@@ -101,7 +101,7 @@ async function AdminDashboard({
           <div className="grid gap-3 sm:grid-cols-2">
             <HighlightStat
               label="Employees"
-              value={peopleStats.employees}
+              value={`${peopleStats.presentToday}/${peopleStats.employees}`}
               icon={Users}
               tone="lilac"
             />

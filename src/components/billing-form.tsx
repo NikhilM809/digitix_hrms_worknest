@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { generateInvoices } from "@/actions/billing";
 import { BillingBadge, StatusBadge } from "@/components/status";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { formatMoney } from "@/lib/format";
+import { companyDateKey, formatMoney } from "@/lib/format";
 import type { ProjectStatus } from "@prisma/client";
 
 type Row = {
@@ -120,7 +120,7 @@ export function GenerateBillsForm({
           </Select>
         </Field>
         <Field label="Invoice date">
-          <Input name="invoiceDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+          <Input name="invoiceDate" type="date" required defaultValue={companyDateKey(new Date())} />
         </Field>
         <Field label="Discount">
           <Input name="discount" type="number" min="0" step="0.01" defaultValue={0} />

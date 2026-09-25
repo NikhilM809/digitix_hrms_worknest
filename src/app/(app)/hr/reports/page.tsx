@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useSession } from "@hrms/lib/hrms-session";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +16,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, subDays } from "date-fns";
+import { companyDateKey, companyToday } from "@/lib/format";
 import { Button } from "@hrms/components/ui/button";
 import { Input } from "@hrms/components/ui/input";
 import { Label } from "@hrms/components/ui/label";
@@ -67,7 +68,7 @@ function ExportButtons({
   rows: ExportRow[];
   reportType: ReportType;
 }) {
-  const filename = `${reportType}-report-${format(new Date(), "yyyy-MM-dd")}`;
+  const filename = `${reportType}-report-${companyDateKey(new Date())}`;
   const title = REPORT_TITLES[reportType];
 
   const handleExport = (type: "excel" | "csv" | "pdf") => {
@@ -106,6 +107,8 @@ function ReportTable({
   rows: ExportRow[];
   isLoading: boolean;
 }) {
+  const [lateTip, setLateTip] = useState<{ text: string; left: number; top: number } | null>(null);
+
   if (isLoading) {
     return (
       <div className="space-y-2 p-4">
@@ -125,7 +128,7 @@ function ReportTable({
     );
   }
 
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(rows[0]).filter((header) => header !== "lateReason");
 
   return (
     <div className="overflow-x-auto">
@@ -148,15 +151,47 @@ function ReportTable({
               key={i}
               className="border-b border-border/50 hover:bg-muted/30 transition-colors"
             >
-              {headers.map((header) => (
-                <td key={header} className="px-4 py-2.5 whitespace-nowrap">
-                  {String(row[header] ?? "-")}
-                </td>
-              ))}
+              {headers.map((header) => {
+                const value = String(row[header] ?? "-");
+                const isLateStatus = header === "status" && value.toUpperCase() === "LATE";
+                return (
+                  <td key={header} className="px-4 py-2.5 whitespace-nowrap">
+                    {isLateStatus ? (
+                      <span
+                        className="cursor-help font-medium text-teal underline decoration-dotted underline-offset-2"
+                        onMouseEnter={(event) => {
+                          const box = event.currentTarget.getBoundingClientRect();
+                          setLateTip({
+                            text: String(row.lateReason || "No comment was entered."),
+                            left: box.left + box.width / 2,
+                            top: box.top,
+                          });
+                        }}
+                        onMouseLeave={() => setLateTip(null)}
+                      >
+                        {value}
+                      </span>
+                    ) : (
+                      value
+                    )}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
       </table>
+      {lateTip &&
+        createPortal(
+          <span
+            role="tooltip"
+            className="pointer-events-none fixed z-[80] w-56 rounded-lg border border-line bg-paper px-3 py-2 text-center text-xs font-normal text-ink shadow-lg"
+            style={{ left: lateTip.left, top: lateTip.top, transform: "translate(-50%, calc(-100% - 6px))" }}
+          >
+            {lateTip.text}
+          </span>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -207,10 +242,11 @@ export default function ReportsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const canAccess = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
-  const [fromDate, setFromDate] = useState(
-    format(subDays(new Date(), 30), "yyyy-MM-dd")
-  );
-  const [toDate, setToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const today = companyToday();
+  const monthAgo = new Date(today);
+  monthAgo.setDate(monthAgo.getDate() - 30);
+  const [fromDate, setFromDate] = useState(companyDateKey(monthAgo));
+  const [toDate, setToDate] = useState(companyDateKey(today));
   const [employeeId, setEmployeeId] = useState("");
   const [lateOnly, setLateOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportType>("attendance");

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { ProjectStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/data";
-import { formatDate, formatHours, formatMoney } from "@/lib/format";
-import { PAGE_SIZE, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER, ROLE_LABEL } from "@/lib/constants";
-import { PROJECT_MANAGER_ROLES, STAFF_ROLES, TASK_ASSIGNEE_ROLES, canCreateProject, canSeeFinance, requireRole } from "@/lib/permissions";
+import { companyDateKey, formatDate, formatHours, formatMoney } from "@/lib/format";
+import { PAGE_SIZE, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
+import { PROJECT_MANAGER_ROLES, STAFF_ROLES, canCreateProject, canSeeFinance, requireRole } from "@/lib/permissions";
 import { listDirectReportUsers, managerProjectWhere } from "@/lib/direct-reports";
 import { withVisibleProjects } from "@/lib/project-access";
 import { holdResumeStatuses } from "@/lib/hold-resume";
@@ -15,7 +15,6 @@ import { AlertPills } from "@/components/status";
 import { ProjectManagerForm } from "@/components/project-manager-form";
 import { ProjectStatusForm } from "@/components/project-status-form";
 import { AddProjectHours } from "@/components/add-project-hours";
-import { TeamAssignForm } from "@/components/team-assign-form";
 import { Button, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +32,7 @@ export default async function ProjectsPage({
   const client = String(params.client || "");
   const managerId = String(params.managerId || "");
   const employeeId = String(params.employeeId || "");
-  const exportDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  const exportDate = companyDateKey(new Date());
   const page = Math.max(1, Number(params.page || 1));
   const finance = canSeeFinance(user.role);
   const settings = await getSettings();
@@ -62,7 +61,7 @@ export default async function ProjectsPage({
       ...(Object.keys(managerScope).length ? [managerScope] : []),
     ],
   });
-  const [total, projects, managers, employees, assignees, clients, workTypes, assignableProjects] = await Promise.all([
+  const [total, projects, managers, employees, clients, workTypes] = await Promise.all([
     prisma.project.count({ where }),
     prisma.project.findMany({
       where,
@@ -79,16 +78,8 @@ export default async function ProjectsPage({
     }),
     listAssignablePeople({ role: { in: PROJECT_MANAGER_ROLES } }),
     user.role === "MANAGER" ? listDirectReportUsers(user.id) : listAssignablePeople({ role: "EMPLOYEE" }),
-    user.role === "MANAGER"
-      ? listDirectReportUsers(user.id)
-      : listAssignablePeople({ role: { in: TASK_ASSIGNEE_ROLES } }),
     getActiveClients(),
     getActiveWorkTypes(),
-    prisma.project.findMany({
-      where: { status: { notIn: ["CLOSE", "CANCEL"] }, ...managerScope },
-      select: { id: true, name: true, code: true },
-      orderBy: { code: "asc" },
-    }),
   ]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -168,17 +159,6 @@ export default async function ProjectsPage({
           Filter
         </Button>
       </form>
-      <Card className="mb-6 p-6">
-        <h2 className="mb-4 font-display text-xl">Assign a task</h2>
-        <TeamAssignForm
-          employees={assignees.map((person) => ({
-            id: person.id,
-            name: person.role === "EMPLOYEE" ? person.name : `${person.name} · ${ROLE_LABEL[person.role]}`,
-          }))}
-          projects={assignableProjects}
-          workTypes={workTypes.map((item) => ({ code: item.code, name: item.name }))}
-        />
-      </Card>
       <Card className="overflow-x-auto">
         {projects.length === 0 ? (
           <EmptyState title="No projects" description="Nothing matches these filters." />
