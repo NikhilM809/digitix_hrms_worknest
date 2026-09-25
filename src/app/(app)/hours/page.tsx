@@ -4,12 +4,13 @@ import { HourEntryEditor } from "@/components/hour-entry-editor";
 import { AddWorkTypeForm } from "@/components/catalog-settings";
 import { Card, PageHeader, Select, StatCard } from "@/components/ui";
 import { workTypeLabel } from "@/lib/constants";
-import { hoursByWorkType } from "@/lib/data";
 import { prisma } from "@/lib/db";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { changesExceedInitialShare } from "@/lib/finance";
-import { companyDateKey, companyToday, formatDate, formatHours } from "@/lib/format";
-import { APPROVED_HOUR_STATUSES, PENDING_HOUR_STATUSES, productivityHours, requiresChangeApproval, sumProductivity } from "@/lib/hour-approval";
+import { companyDateKey, companyToday, formatDate, formatHours, getActiveTimeZone } from "@/lib/format";
+import { formatDateTimeInZone } from "@hrms/lib/timezone-utils";
+import Link from "next/link";
+import { APPROVED_HOUR_STATUSES, productivityHours, sumProductivity } from "@/lib/hour-approval";
 import { STAFF_ROLES, isAdminLike, requireRole } from "@/lib/permissions";
 import { listDirectReportUsers, managerProjectWhere } from "@/lib/direct-reports";
 
@@ -66,21 +67,17 @@ export default async function HoursPage({
           select: {
             id: true,
             sellValue: true,
-            timeEntries: {
-              where: { status: { in: APPROVED_HOUR_STATUSES } },
-              select: { hours: true, workType: true },
-            },
+            billingChangesHours: true,
           },
         })
       )
-        .filter((project) => changesExceedInitialShare(project.sellValue, hoursByWorkType(project.timeEntries).changes))
+        .filter((project) => changesExceedInitialShare(project.sellValue, project.billingChangesHours))
         .map((project) => project.id)
     : null;
   const entries = await prisma.timeEntry.findMany({
       where: {
         ...(scopedEmployeeId ? { employeeId: scopedEmployeeId } : {}),
         ...(selectedWorkType ? { workType: selectedWorkType } : {}),
-        ...(status === "PENDING" ? { status: { in: PENDING_HOUR_STATUSES } } : {}),
         ...(status === "APPROVED" ? { status: { in: APPROVED_HOUR_STATUSES } } : {}),
         ...(overProjectIds
           ? { projectId: { in: overProjectIds } }
@@ -106,6 +103,12 @@ export default async function HoursPage({
     (entry) => entry.date >= startOfWeek(now, { weekStartsOn: 1 }) && entry.date <= endOfWeek(now, { weekStartsOn: 1 }),
   );
   const monthEntries = entries.filter((entry) => entry.date >= startOfMonth(now) && entry.date <= endOfMonth(now));
+  const activity = await prisma.projectActivity.findMany({
+    where: { createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+    include: { actor: true, project: { select: { id: true, name: true, dxlCode: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 40,
+  });
   return (
     <div>
       <PageHeader
@@ -113,7 +116,7 @@ export default async function HoursPage({
         description={
           teamOnly
             ? "Review hours for your team. Totals follow the filters below."
-            : "All hours are listed here, and the totals follow the filters. Change hours stay pending until an admin approves them."
+            : "Employee hours stay on productivity. Hours an admin updates, other than initial scripting, are added to billing at 20 each."
         }
       />
       <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
@@ -149,11 +152,6 @@ export default async function HoursPage({
             </option>
           ))}
         </Select>
-        <Select name="status" defaultValue={status} className="w-auto min-w-40">
-          <option value="">All approvals</option>
-          <option value="PENDING">Pending approval</option>
-          <option value="APPROVED">Approved</option>
-        </Select>
         <Select name="over" defaultValue={overOnly ? "1" : ""} className="w-auto min-w-72">
           <option value="">All change levels</option>
           <option value="1">Changes over 20% of project value</option>
@@ -166,6 +164,7 @@ export default async function HoursPage({
         <StatCard label="This month" value={formatHours(sumProductivity(monthEntries))} />
         <StatCard label="Total" value={formatHours(sumProductivity(entries))} />
       </div>
+      {user.role === "ADMIN" ? null : (
       <Card className="mb-6 p-6">
         <h2 className="mb-4 font-display text-xl">Log hours for someone</h2>
         <AddHoursForm
@@ -176,6 +175,8 @@ export default async function HoursPage({
           canChooseEmployee
         />
       </Card>
+      )}
+      {user.role === "ADMIN" ? null : (
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
@@ -187,7 +188,7 @@ export default async function HoursPage({
               <th className="px-5 py-3 text-right">Original hours</th>
               <th className="px-5 py-3 text-right">Billable hours</th>
               <th className="px-5 py-3">Notes</th>
-              <th className="px-5 py-3">Approval</th>
+              <th className="px-5 py-3">Update</th>
             </tr>
           </thead>
           <tbody>
@@ -205,9 +206,7 @@ export default async function HoursPage({
                     entryId={entry.id}
                     hours={entry.hours}
                     notes={entry.notes}
-                    status={entry.status}
-                    canApprove={user.role === "ADMIN" && requiresChangeApproval(entry.workType)}
-                    canEdit={user.role === "ADMIN" || entry.employeeId === user.id || isAdminLike(user.role) || teamOnly}
+                    canEdit={entry.employeeId === user.id || isAdminLike(user.role) || teamOnly}
                   />
                 </td>
               </tr>
@@ -215,12 +214,49 @@ export default async function HoursPage({
           </tbody>
         </table>
       </Card>
+      )}
       {isAdminLike(user.role) ? (
         <Card className="mt-6 p-6">
           <h2 className="mb-4 font-display text-xl">Add a work type</h2>
           <AddWorkTypeForm />
         </Card>
       ) : null}
+      <Card className="mt-6 overflow-x-auto">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="font-display text-xl">Last 7 days</h2>
+        </div>
+        {activity.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted">No project status, hours, or billing changes in the last 7 days.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
+              <tr>
+                <th className="px-5 py-3">When</th>
+                <th className="px-5 py-3">Project</th>
+                <th className="px-5 py-3">Who</th>
+                <th className="px-5 py-3">Change</th>
+                <th className="px-5 py-3">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activity.map((row) => (
+                <tr key={row.id} className="border-t border-line">
+                  <td className="px-5 py-3">{formatDateTimeInZone(row.createdAt, getActiveTimeZone())}</td>
+                  <td className="px-5 py-3">
+                    <Link href={`/projects/${row.project.id}`} className="hover:text-teal">
+                      {row.project.name}
+                    </Link>
+                    <p className="text-xs text-muted">{row.project.dxlCode || "—"}</p>
+                  </td>
+                  <td className="px-5 py-3">{row.actor.name}</td>
+                  <td className="px-5 py-3">{row.action}</td>
+                  <td className="px-5 py-3">{row.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
     </div>
   );
 }

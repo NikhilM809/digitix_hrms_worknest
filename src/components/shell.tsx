@@ -230,7 +230,7 @@ export function AppShell({
     <div className="min-h-screen bg-paper text-ink">
       <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col bg-navy text-white lg:flex">
         <div className="flex items-center gap-3 px-6 py-6">
-          <BrandLogo className="h-10 w-10 ring-1 ring-white/15" />
+          <BrandLogo className="ring-1 ring-white/15" />
           <div>
             <p className="font-display text-2xl tracking-tight">{APP_NAME}</p>
             <p className="mt-0.5 text-xs text-white/60">{APP_TAGLINE}</p>
@@ -258,7 +258,7 @@ export function AppShell({
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-paper/90 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex items-center gap-2 lg:hidden">
-            <BrandLogo className="h-8 w-8" />
+            <BrandLogo />
             <p className="font-display text-lg">{APP_NAME}</p>
           </div>
           <div className="ml-auto flex items-center gap-2">

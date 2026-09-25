@@ -15,6 +15,7 @@ import type { ProjectStatus } from "@prisma/client";
 export type UnbilledRow = {
   id: string;
   code: string;
+  dxlCode: string | null;
   name: string;
   clientName: string;
   status: ProjectStatus;
@@ -63,11 +64,10 @@ export function UnbilledBillingReport({
     setSelected(closedIds);
   }
 
-  async function exportSelected() {
-    const ids = selected.length ? selected : rows.map((row) => row.id);
+  async function exportIds(ids: string[]) {
     if (!ids.length) {
       toast.error("Nothing to export.");
-      return;
+      return false;
     }
     const response = await fetch("/api/billing/efforts-export", {
       method: "POST",
@@ -77,7 +77,7 @@ export function UnbilledBillingReport({
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       toast.error(data?.error ?? "Could not export the tracker.");
-      return;
+      return false;
     }
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -90,8 +90,16 @@ export function UnbilledBillingReport({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    toast.success("Efforts tracker exported. This does not create invoices.");
-    router.refresh();
+    return true;
+  }
+
+  async function exportSelected() {
+    const ids = selected.length ? selected : rows.map((row) => row.id);
+    const exported = await exportIds(ids);
+    if (exported) {
+      toast.success("Efforts tracker exported. This does not create invoices.");
+      router.refresh();
+    }
   }
 
   function markSelected() {
@@ -109,6 +117,8 @@ export function UnbilledBillingReport({
     const formData = new FormData();
     for (const id of selected) formData.append("projectIds", id);
     start(async () => {
+      const exported = await exportIds(selected);
+      if (!exported) return;
       const result = await markProjectsForBilling(formData);
       if (result?.error) {
         toast.error(result.error);
@@ -207,6 +217,7 @@ export function UnbilledBillingReport({
                   <input type="checkbox" checked={allSelected} onChange={selectAll} aria-label="Select all unbilled projects" />
                 </th>
                 <th className="px-4 py-3">Project</th>
+                <th className="px-4 py-3">DXL Project ID</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Initial</th>
@@ -236,6 +247,7 @@ export function UnbilledBillingReport({
                     </Link>
                     <p className="text-xs text-muted">{row.code}</p>
                   </td>
+                  <td className="px-4 py-3">{row.dxlCode || "—"}</td>
                   <td className="px-4 py-3">{row.clientName}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
@@ -265,6 +277,7 @@ export function UnbilledBillingReport({
                 </th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Project</th>
+                <th className="px-4 py-3">DXL Project ID</th>
                 <th className="px-4 py-3 text-right">Billable total</th>
                 <th className="px-4 py-3">Project receive date</th>
                 <th className="px-4 py-3">Delivery date</th>
@@ -292,6 +305,7 @@ export function UnbilledBillingReport({
                       {row.name} - {row.code}
                     </Link>
                   </td>
+                  <td className="px-4 py-3">{row.dxlCode || "—"}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(amountFor(row), row.currencyCode)}</td>
                   <td className="px-4 py-3">{formatDate(row.startDate ?? row.createdAt)}</td>
                   <td className="px-4 py-3">{formatDate(row.actualCompletionDate ?? row.eta)}</td>

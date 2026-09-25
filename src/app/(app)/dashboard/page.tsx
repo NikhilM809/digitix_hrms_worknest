@@ -12,7 +12,8 @@ import { getSettings, sumHours } from "@/lib/data";
 import { ensureCurrencies } from "@/lib/currency";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
 import { totalsByCurrency, remainingByCurrency } from "@/lib/finance";
-import { formatDate, formatHours, isEtaSoon, isOverdue } from "@/lib/format";
+import { formatDate, formatHours, getActiveTimeZone, isEtaSoon, isOverdue } from "@/lib/format";
+import { formatDateTimeInZone } from "@hrms/lib/timezone-utils";
 import { auth } from "@/auth";
 import { isAdminLike, requireUser } from "@/lib/permissions";
 import { managerProjectWhere } from "@/lib/direct-reports";
@@ -59,7 +60,8 @@ async function AdminDashboard({
   peopleLinked: boolean;
   name: string;
 }) {
-  const [settings, clients, projects, peopleStats] = await Promise.all([
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [settings, clients, projects, peopleStats, activity] = await Promise.all([
     getSettings(),
     getActiveClients(),
     prisma.project.findMany({
@@ -67,6 +69,12 @@ async function AdminDashboard({
       include: { timeEntries: { select: { hours: true } }, invoices: true, currency: true },
     }),
     peopleOverviewStats(),
+    prisma.projectActivity.findMany({
+      where: { createdAt: { gte: since } },
+      include: { actor: true, project: { select: { id: true, name: true, dxlCode: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+    }),
   ]);
   await ensureCurrencies();
   const byStatus = (status: ProjectStatus) => projects.filter((p) => p.status === status).length;
@@ -127,6 +135,43 @@ async function AdminDashboard({
           <PeopleRecentActivity />
         </div>
       ) : null}
+
+      <Card className="mb-8 overflow-x-auto">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="font-display text-xl">Last 7 days</h2>
+        </div>
+        {activity.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted">No project status, hours, or billing changes in the last 7 days.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
+              <tr>
+                <th className="px-5 py-3">When</th>
+                <th className="px-5 py-3">Project</th>
+                <th className="px-5 py-3">Who</th>
+                <th className="px-5 py-3">Change</th>
+                <th className="px-5 py-3">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activity.map((row) => (
+                <tr key={row.id} className="border-t border-line">
+                  <td className="px-5 py-3">{formatDateTimeInZone(row.createdAt, getActiveTimeZone())}</td>
+                  <td className="px-5 py-3">
+                    <Link href={`/projects/${row.project.id}`} className="hover:text-teal">
+                      {row.project.name}
+                    </Link>
+                    <p className="text-xs text-muted">{row.project.dxlCode || "—"}</p>
+                  </td>
+                  <td className="px-5 py-3">{row.actor.name}</td>
+                  <td className="px-5 py-3">{row.action}</td>
+                  <td className="px-5 py-3">{row.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
 
       <h2 className="mb-3 font-display text-xl text-ink">Projects</h2>
       <form method="get" className="mb-4 flex max-w-sm gap-3">

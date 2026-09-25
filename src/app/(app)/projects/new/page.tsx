@@ -30,7 +30,10 @@ export default async function NewProjectPage() {
           code,
           clientName: clients[0]?.name ?? "",
           description: "",
-          managerId: people.find((p) => p.role === "MANAGER" || p.role === "SENIOR_MANAGER")?.id ?? user.id,
+          managerId:
+            people.find((person) => /srinivasan/i.test(person.name))?.id ??
+            people.find((person) => person.role === "MANAGER" || person.role === "SENIOR_MANAGER")?.id ??
+            user.id,
           status: "BID",
           sellValue: 0,
           currencyId: fallback.id,

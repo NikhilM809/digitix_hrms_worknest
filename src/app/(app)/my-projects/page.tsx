@@ -17,7 +17,7 @@ export default async function MyProjectsPage({
       dir={params.dir === "desc" ? "desc" : "asc"}
       page={Math.max(1, Number(params.page || 1))}
       title="Projects"
-      description="Update status and log hours. Change hours wait for an admin to approve them."
+      description="Update status and log hours. Hours you enter are used for productivity."
     />
   );
 }

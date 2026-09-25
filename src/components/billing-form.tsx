@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { generateInvoices } from "@/actions/billing";
+import { generateInvoices, returnProjectsToUnbilled } from "@/actions/billing";
 import { BillingBadge, StatusBadge } from "@/components/status";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { companyDateKey, formatMoney } from "@/lib/format";
@@ -13,6 +13,7 @@ import type { ProjectStatus } from "@prisma/client";
 type Row = {
   id: string;
   code: string;
+  dxlCode?: string | null;
   name: string;
   clientName: string;
   status: ProjectStatus;
@@ -54,12 +55,35 @@ export function GenerateBillsForm({
   const subtotal = selectedRows.reduce((sum, row) => sum + (amounts[row.id] ?? row.billableTotal), 0);
   const currency = selectedRows[0]?.currencyCode ?? billable[0]?.currencyCode ?? "";
 
+  function sendBack(ids: string[]) {
+    if (!ids.length) return;
+    start(async () => {
+      const result = await returnProjectsToUnbilled(ids);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        ids.length === 1 ? "Project returned to the unbilled list." : `${ids.length} projects returned to the unbilled list.`,
+      );
+      router.refresh();
+    });
+  }
+
   function toggle(id: string) {
-    setChecked((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
+    if (checked.includes(id)) {
+      sendBack([id]);
+      return;
+    }
+    setChecked((current) => [...current, id]);
   }
 
   function toggleAll() {
-    setChecked(allChecked ? [] : billable.map((row) => row.id));
+    if (allChecked) {
+      sendBack(billable.map((row) => row.id));
+      return;
+    }
+    setChecked(billable.map((row) => row.id));
   }
 
   function onSubmit(formData: FormData) {
@@ -166,7 +190,7 @@ export function GenerateBillsForm({
                   <Link href={`/projects/${row.id}`} className="font-medium hover:text-teal">
                     {row.name}
                   </Link>
-                  <p className="text-xs text-muted">{row.code}</p>
+                  <p className="text-xs text-muted">{row.dxlCode || "—"} · {row.code}</p>
                 </td>
                 <td className="px-4 py-3">{row.clientName}</td>
                 <td className="px-4 py-3">

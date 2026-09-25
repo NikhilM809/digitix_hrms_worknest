@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Role, ProjectStatus, TrackingStatus } from "@prisma/client";
+import { Prisma, Role, ProjectStatus, TrackingStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { splitEstimatedHours } from "@/lib/work-types";
@@ -14,7 +14,9 @@ import { managerCanAccessProject } from "@/lib/direct-reports";
 import { isTrackingStatus } from "@/lib/hour-approval";
 import { holdResumeStatuses } from "@/lib/hold-resume";
 import { isInactiveStatus, statusesAvailable } from "@/lib/project-status";
-import { PROJECT_STATUS_LABEL } from "@/lib/constants";
+import { PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
+import { nextDxlCode } from "@/lib/dxl-code";
+import { logProjectActivity } from "@/lib/project-activity";
 
 const projectSchema = z.object({
   name: z.string().trim().min(2, "Project name is required."),
@@ -56,7 +58,8 @@ function readHourSplit(formData: FormData, estimatedHours: number) {
   };
 }
 
-async function allowedStatuses(projectId: string, current: ProjectStatus) {
+async function allowedStatuses(projectId: string, current: ProjectStatus, role?: Role) {
+  if (role === Role.ADMIN) return [...PROJECT_STATUS_ORDER];
   if (current !== "HOLD") return statusesAvailable(current);
   const resume = await holdResumeStatuses([projectId]);
   return statusesAvailable(current, resume.get(projectId) ?? null);
@@ -105,6 +108,12 @@ async function recordStatusChange(
   if (from === to) return;
   await prisma.projectStatusChange.create({
     data: { projectId, fromStatus: from, toStatus: to, changedById: userId },
+  });
+  await logProjectActivity({
+    projectId,
+    actorId: userId,
+    action: "Status",
+    detail: `${projectName}: ${PROJECT_STATUS_LABEL[from]} to ${PROJECT_STATUS_LABEL[to]}`,
   });
   await notifyManagersOfProject(projectId, {
     title: "Project status updated",
@@ -183,8 +192,7 @@ export async function createProject(formData: FormData) {
   const sellValue = parsed.data.sellValue ?? 0;
   const split = readHourSplit(formData, parsed.data.estimatedHours);
   const now = new Date();
-  const project = await prisma.project.create({
-    data: {
+  const projectData = {
       code,
       name: parsed.data.name,
       clientName: parsed.data.clientName,
@@ -207,7 +215,26 @@ export async function createProject(formData: FormData) {
       selfAssignEnabled: parsed.data.selfAssignEnabled === "on",
       statusChangedAt: now,
       statusChangedById: user.id,
-    },
+  };
+  let project: Awaited<ReturnType<typeof prisma.project.create>> | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      project = await prisma.project.create({
+        data: { ...projectData, dxlCode: await nextDxlCode() },
+      });
+      break;
+    } catch (error) {
+      const unique = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+      const target = unique ? String(error.meta?.target ?? "") : "";
+      if (!unique || !target.includes("dxlCode") || attempt === 2) throw error;
+    }
+  }
+  if (!project) return { error: "Could not assign a DXL Project ID." };
+  await logProjectActivity({
+    projectId: project.id,
+    actorId: user.id,
+    action: "Created",
+    detail: `${project.name} created with DXL Project ID ${project.dxlCode}`,
   });
 
   const employeeIds = parsed.data.employeeIds ?? [];
@@ -241,7 +268,7 @@ export async function updateProject(projectId: string, formData: FormData) {
   }
 
   const nextStatus = String(formData.get("status") || existing.status) as ProjectStatus;
-  const invalid = statusTransitionError(existing.status, nextStatus, await allowedStatuses(projectId, existing.status));
+  const invalid = statusTransitionError(existing.status, nextStatus, await allowedStatuses(projectId, existing.status, user.role));
   if (invalid) return { error: invalid };
 
   const eta = parseDate(String(formData.get("eta") || "")) ?? existing.eta;
@@ -352,7 +379,11 @@ export async function updateProjectStatus(projectId: string, formData: FormData)
   }
 
   const nextStatus = String(formData.get("status") || existing.status) as ProjectStatus;
-  const invalid = statusTransitionError(existing.status, nextStatus, await allowedStatuses(projectId, existing.status));
+  const invalid = statusTransitionError(
+    existing.status,
+    nextStatus,
+    await allowedStatuses(projectId, existing.status, user.role),
+  );
   if (invalid) return { error: invalid };
 
   await prisma.project.update({
@@ -412,7 +443,7 @@ export async function closeProject(projectId: string) {
   assertRole(user, STAFF_ROLES);
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) throw new ActionError("Project not found.");
-  const invalid = statusTransitionError(project.status, "CLOSE", await allowedStatuses(projectId, project.status));
+  const invalid = statusTransitionError(project.status, "CLOSE", await allowedStatuses(projectId, project.status, user.role));
   if (invalid) throw new ActionError(invalid);
   await prisma.project.update({
     where: { id: projectId },
@@ -433,6 +464,37 @@ export async function reopenProject(projectId: string) {
   });
   await recordStatusChange(projectId, project.status, "LIVE", user.id, project.name);
   revalidateProject(projectId);
+}
+
+export async function updateBillingHours(projectId: string, formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== Role.ADMIN) return { error: "Only an admin can update billing hours." };
+  const existing = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!existing) return { error: "Project not found." };
+  const initial = Number(formData.get("billingInitialHours"));
+  const changes = Number(formData.get("billingChangesHours"));
+  const live = Number(formData.get("billingLiveHours"));
+  if ([initial, changes, live].some((value) => !Number.isFinite(value) || value < 0)) {
+    return { error: "Enter billing hours as zero or more." };
+  }
+  await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      billingInitialHours: initial,
+      billingChangesHours: changes,
+      billingLiveHours: live,
+    },
+  });
+  await logProjectActivity({
+    projectId,
+    actorId: user.id,
+    action: "Billing hours",
+    detail: `${existing.name}: initial ${initial}, changes ${changes}, live ${live}`,
+  });
+  revalidateProject(projectId);
+  revalidatePath("/billing");
+  revalidatePath("/reports");
+  return { ok: true };
 }
 
 export async function deleteProject(projectId: string) {

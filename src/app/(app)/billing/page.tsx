@@ -5,7 +5,7 @@ import { UnbilledBillingReport } from "@/components/unbilled-billing";
 import { CurrencyTotals } from "@/components/currency-totals";
 import { Card, Input, PageHeader, Select, StatCard } from "@/components/ui";
 import { prisma } from "@/lib/db";
-import { hoursByWorkType, getSettings, projectSearchWhere } from "@/lib/data";
+import { getSettings, projectSearchWhere } from "@/lib/data";
 import { ensureCurrencies } from "@/lib/currency";
 import { getActiveClients, getActiveInvoiceServices } from "@/lib/catalog";
 import { billableAmount, changesExceedInitialShare, displayBillingStatus, totalsByCurrency } from "@/lib/finance";
@@ -34,6 +34,7 @@ export default async function BillingPage({
   const unbilled = await prisma.project.findMany({
     where: {
       status: { not: "CANCEL" },
+      billingStage: { not: "APPROVED" },
       invoices: { none: {} },
       ...(client ? { clientName: client } : {}),
       AND: [
@@ -53,29 +54,25 @@ export default async function BillingPage({
     include: {
       manager: true,
       currency: true,
-      timeEntries: { select: { hours: true, workType: true, status: true } },
     },
     orderBy: [{ status: "asc" }, { eta: "asc" }],
   });
 
   const unbilledRows = unbilled.map((project) => {
-    const approvedEntries = project.timeEntries.filter(
-      (entry) => entry.status === "APPROVED" || entry.status === "REVIEWED",
-    );
-    const hours = hoursByWorkType(approvedEntries);
     return {
       id: project.id,
       code: project.code,
+      dxlCode: project.dxlCode,
       name: project.name,
       clientName: project.clientName,
       status: project.status,
       managerName: project.manager.name,
       currencyCode: project.currency?.code ?? "",
       sellValue: project.sellValue,
-      initialHours: hours.initial,
-      changesHours: hours.changes,
-      liveHours: hours.live,
-      totalHours: hours.total,
+      initialHours: project.initialEstimatedHours > 0 ? project.initialEstimatedHours : project.estimatedHours,
+      changesHours: project.billingChangesHours,
+      liveHours: project.billingLiveHours,
+      totalHours: project.billingInitialHours + project.billingChangesHours + project.billingLiveHours,
       eta: project.eta,
       actualCompletionDate: project.actualCompletionDate,
       startDate: project.startDate,
@@ -109,23 +106,20 @@ export default async function BillingPage({
     include: {
       invoices: true,
       currency: true,
-      timeEntries: { select: { hours: true, workType: true, status: true } },
     },
     orderBy: { actualCompletionDate: "desc" },
   });
   const readyRows = ready.map((project) => {
-    const hours = hoursByWorkType(
-      project.timeEntries.filter((entry) => entry.status === "APPROVED" || entry.status === "REVIEWED"),
-    );
     return {
       id: project.id,
       code: project.code,
+      dxlCode: project.dxlCode,
       name: project.name,
       clientName: project.clientName,
       status: project.status,
       actualCompletionDate: project.actualCompletionDate,
       sellValue: project.sellValue,
-      billableTotal: billableAmount(project.sellValue, hours.changes, hours.live),
+      billableTotal: billableAmount(project.sellValue, project.billingChangesHours, project.billingLiveHours),
       currencyCode: project.currency?.code ?? "",
       billingStatus: displayBillingStatus(project),
       billed: false,
@@ -147,7 +141,7 @@ export default async function BillingPage({
     <div>
       <PageHeader
         title="Billing"
-        description="Review unbilled work, then generate one client invoice. The billable total is the project value plus change and live hours at 20 each. Use the change filter to list projects whose change hours, at 20 each, are more than 20% of the project value."
+        description="Review unbilled work, then generate one client invoice. Billing uses admin billing hours only. The billable total is the project value plus change and live hours at 20 each. Employee-entered hours stay on productivity and are not billed."
         actions={
           <Link href="/billing/history" className="text-sm text-teal">
             Billing history

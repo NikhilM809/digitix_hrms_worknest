@@ -62,6 +62,19 @@ export async function markProjectsForBilling(formData: FormData) {
   };
 }
 
+export async function returnProjectsToUnbilled(projectIds: string[]) {
+  const user = await requireUser();
+  assertRole(user, ADMIN_LIKE_ROLES);
+  const ids = [...new Set(projectIds.map(String).filter(Boolean))];
+  if (!ids.length) return { error: "Select a project to return." };
+  await prisma.project.updateMany({
+    where: { id: { in: ids }, invoices: { none: {} }, billingStage: "APPROVED" },
+    data: { billingStage: "NONE" },
+  });
+  revalidatePath("/billing");
+  return { ok: true };
+}
+
 export async function generateInvoices(formData: FormData) {
   const user = await requireUser();
   assertRole(user, ADMIN_LIKE_ROLES);

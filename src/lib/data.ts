@@ -132,6 +132,7 @@ export function projectSearchWhere(q: string) {
   return {
     OR: tokens.flatMap((token) => [
       { code: { contains: token } },
+      { dxlCode: { contains: token } },
       { name: { contains: token } },
     ]),
   };

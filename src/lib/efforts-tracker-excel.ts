@@ -2,7 +2,6 @@ import ExcelJS from "exceljs";
 import { format } from "date-fns";
 import type { InvoiceStatus, ProjectStatus } from "@prisma/client";
 import { trackerProjectStatusLabel, workTypeLabel } from "@/lib/constants";
-import { hoursByWorkType } from "@/lib/data";
 import { workTypeBucket } from "@/lib/work-types";
 
 export type TrackerProject = {
@@ -18,6 +17,7 @@ export type TrackerProject = {
   actualCompletionDate: Date | null;
   managerName: string;
   currencyCode: string;
+  billingChangesHours: number;
   timeEntries: { date: Date; hours: number; workType: string; notes: string }[];
   invoices: { status: InvoiceStatus }[];
 };
@@ -131,7 +131,6 @@ export async function buildEffortsTrackerWorkbook(input: {
   );
 
   for (const project of input.projects) {
-    const breakdown = hoursByWorkType(project.timeEntries);
     const billed = project.invoices.length > 0;
     const paid = project.invoices.some((invoice) => invoice.status === "PAID");
     const receive = asDate(project.startDate) ?? asDate(project.createdAt);
@@ -149,7 +148,7 @@ export async function buildEffortsTrackerWorkbook(input: {
       "No",
       "No",
       project.managerName,
-      yesNo(breakdown.changes > 0),
+      yesNo(project.billingChangesHours > 0),
       "",
       "",
     ]);

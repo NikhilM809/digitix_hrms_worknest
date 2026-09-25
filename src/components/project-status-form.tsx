@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ProjectStatus } from "@prisma/client";
 import { updateProjectStatus } from "@/actions/projects";
 import { Select } from "@/components/ui";
-import { PROJECT_STATUS_LABEL } from "@/lib/constants";
+import { PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { statusesAvailable } from "@/lib/project-status";
 
@@ -17,6 +17,7 @@ export function ProjectStatusForm({
   changedAt,
   resumeFrom = null,
   compact = false,
+  unrestricted = false,
 }: {
   projectId: string;
   status: ProjectStatus;
@@ -24,10 +25,11 @@ export function ProjectStatusForm({
   changedAt?: Date | string | null;
   resumeFrom?: ProjectStatus | null;
   compact?: boolean;
+  unrestricted?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const options = statusesAvailable(status, resumeFrom);
+  const options = unrestricted ? PROJECT_STATUS_ORDER : statusesAvailable(status, resumeFrom);
 
   function onChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const next = event.target.value as ProjectStatus;

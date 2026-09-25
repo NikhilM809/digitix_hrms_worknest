@@ -8,8 +8,25 @@ import { ensureCatalog } from "@/lib/catalog";
 import { notifyAdmins, notifyUsers } from "@/lib/notify";
 import { requireUser } from "@/lib/permissions";
 import { listDirectReportUsers, managerCanAccessProject } from "@/lib/direct-reports";
-import { requiresChangeApproval } from "@/lib/hour-approval";
+import { workTypeBucket } from "@/lib/work-types";
 import { isInactiveStatus } from "@/lib/project-status";
+import { logProjectActivity } from "@/lib/project-activity";
+
+async function addAdminBillingHours(projectId: string, workType: string, delta: number) {
+  if (!delta) return;
+  if (workTypeBucket(workType) === "initial") return;
+  const field = workTypeBucket(workType) === "changes" ? "billingChangesHours" : "billingLiveHours";
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { billingChangesHours: true, billingLiveHours: true },
+  });
+  if (!project) return;
+  const current = field === "billingChangesHours" ? project.billingChangesHours : project.billingLiveHours;
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { [field]: Math.max(0, current + delta) },
+  });
+}
 
 function parseDate(value?: string | null) {
   if (!value) return null;
@@ -86,16 +103,18 @@ export async function addHours(formData: FormData) {
       hours,
       originalHours: hours,
       notes,
-      status: requiresChangeApproval(workType) ? "PENDING" : "APPROVED",
+      status: "APPROVED",
     },
   });
-  if (requiresChangeApproval(workType)) {
-    await notifyAdmins({
-      title: "Change hours pending approval",
-      message: `${hours} change hours on ${project.name} are waiting for admin approval.`,
-      href: "/hours?status=PENDING",
-    });
+  if (user.role === Role.ADMIN) {
+    await addAdminBillingHours(projectId, workType, hours);
   }
+  await logProjectActivity({
+    projectId,
+    actorId: user.id,
+    action: "Hours",
+    detail: `${hours} productivity hours on ${project.name}`,
+  });
 
   const allHours = hoursByWorkType([...project.timeEntries, { hours, workType }]);
   if (allHours.total > project.estimatedHours && project.timeEntries.reduce((s, e) => s + e.hours, 0) <= project.estimatedHours) {
@@ -130,7 +149,6 @@ export async function saveHourEntry(formData: FormData) {
   const entryId = String(formData.get("entryId") ?? "");
   const hours = Number(formData.get("hours"));
   const notes = formData.has("notes") ? String(formData.get("notes") ?? "") : undefined;
-  const intent = String(formData.get("intent") || "save");
 
   if (!entryId) return { error: "Hour entry not found." };
   if (!hours || hours <= 0 || hours > 24) return { error: "Enter hours between 0 and 24." };
@@ -142,13 +160,6 @@ export async function saveHourEntry(formData: FormData) {
   if (!entry) return { error: "Hour entry not found." };
 
   const isAdmin = user.role === Role.ADMIN;
-  const changeHours = requiresChangeApproval(entry.workType);
-  if (intent === "approve" && !isAdmin) {
-    return { error: "Only admins can approve change hours." };
-  }
-  if (intent === "approve" && !changeHours) {
-    return { error: "Only change hours need admin approval." };
-  }
   if (!isAdmin && user.role === Role.EMPLOYEE && entry.employeeId !== user.id) {
     return { error: "You can only update your own hours." };
   }
@@ -156,29 +167,26 @@ export async function saveHourEntry(formData: FormData) {
     return { error: "You can only update hours on your projects or your direct reports' projects." };
   }
 
-  const approving = intent === "approve" && isAdmin;
   await prisma.timeEntry.update({
     where: { id: entryId },
     data: {
       hours,
+      status: "APPROVED",
       ...(notes !== undefined ? { notes } : {}),
       editedById: user.id,
       editedAt: new Date(),
-      ...(approving
-        ? { status: "APPROVED", reviewedById: user.id }
-        : isAdmin || !changeHours
-          ? changeHours
-            ? {}
-            : { status: "APPROVED" }
-          : { status: "PENDING", reviewedById: null }),
     },
   });
+  if (isAdmin) {
+    await addAdminBillingHours(entry.projectId, entry.workType, hours - entry.hours);
+  }
 
-  if (!approving && !isAdmin && changeHours) {
-    await notifyAdmins({
-      title: "Change hours updated and pending approval",
-      message: `${entry.project.name} change hours were edited and need admin approval.`,
-      href: "/hours?status=PENDING",
+  if (hours !== entry.hours) {
+    await logProjectActivity({
+      projectId: entry.projectId,
+      actorId: user.id,
+      action: "Hours",
+      detail: `${entry.project.name}: productivity hours updated to ${hours}`,
     });
   }
 

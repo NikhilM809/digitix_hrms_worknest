@@ -17,7 +17,7 @@ const display = Fraunces({
 export const metadata: Metadata = {
   title: "WorkNest",
   description: "Your people. Your projects. One workspace.",
-  icons: { icon: "/logo.png" },
+  icons: { icon: "/favicon.png" },
 };
 
 export const dynamic = "force-dynamic";

@@ -22,6 +22,7 @@ export function ProjectForm({
   canEditFinance,
   defaults,
   resumeFrom = null,
+  unrestricted = false,
 }: {
   mode: "create" | "edit";
   projectId?: string;
@@ -30,6 +31,7 @@ export function ProjectForm({
   clients: ClientOption[];
   canEditFinance: boolean;
   resumeFrom?: ProjectStatus | null;
+  unrestricted?: boolean;
   defaults?: {
     name: string;
     code: string;
@@ -149,7 +151,7 @@ export function ProjectForm({
         </Field>
         <Field label="Status">
           <Select name="status" defaultValue={defaults?.status ?? "BID"}>
-            {(mode === "create" ? PROJECT_STATUS_ORDER : statusesAvailable(defaults?.status ?? "BID", resumeFrom)).map((status) => (
+            {(mode === "create" || unrestricted ? PROJECT_STATUS_ORDER : statusesAvailable(defaults?.status ?? "BID", resumeFrom)).map((status) => (
               <option key={status} value={status}>
                 {PROJECT_STATUS_LABEL[status]}
               </option>

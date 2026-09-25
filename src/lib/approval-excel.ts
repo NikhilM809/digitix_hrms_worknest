@@ -1,6 +1,5 @@
 import { formatDate, formatHours, formatMonthYear, hoursProgress } from "@/lib/format";
 import { PROJECT_STATUS_LABEL } from "@/lib/constants";
-import { hoursByWorkType } from "@/lib/data";
 import { displayBillingStatus } from "@/lib/finance";
 import ExcelJS from "exceljs";
 import type { BillingStage, InvoiceStatus, ProjectStatus } from "@prisma/client";
@@ -14,6 +13,9 @@ type ApprovalProject = {
   billingStage: BillingStage;
   sellValue: number;
   estimatedHours: number;
+  billingInitialHours: number;
+  billingChangesHours: number;
+  billingLiveHours: number;
   startDate: Date | null;
   eta: Date;
   actualCompletionDate: Date | null;
@@ -43,8 +45,13 @@ export async function buildApprovalWorkbook(input: {
   exportedBy: string;
 }) {
   const { project, billingMonth, billingYear } = input;
-  const breakdown = hoursByWorkType(project.timeEntries);
-  const progress = hoursProgress(breakdown.total, project.estimatedHours);
+  const billingHours = {
+    initial: project.billingInitialHours,
+    changes: project.billingChangesHours,
+    live: project.billingLiveHours,
+    total: project.billingInitialHours + project.billingChangesHours + project.billingLiveHours,
+  };
+  const progress = hoursProgress(billingHours.total, project.estimatedHours);
   const invoice = project.invoices.find(
     (row) => row.billingMonth === billingMonth && row.billingYear === billingYear,
   ) ?? project.invoices[0];
@@ -129,10 +136,10 @@ export async function buildApprovalWorkbook(input: {
   sheet.addRow([]);
 
   section("Hours");
-  pair("Estimated hours", project.estimatedHours, "Initial scripting hours", breakdown.initial, { v: "0.0", v2: "0.0" });
-  pair("Changes hours", breakdown.changes, "Live hours", breakdown.live, { v: "0.0", v2: "0.0" });
-  pair("Total actual hours", breakdown.total, remainingLabel, remainingValue, { v: "0.0", v2: "0.0" });
-  pair("Hours summary", `${formatHours(breakdown.total)} / ${formatHours(project.estimatedHours)}`, "", "");
+  pair("Estimated hours", project.estimatedHours, "Initial billing hours", billingHours.initial, { v: "0.0", v2: "0.0" });
+  pair("Changes hours", billingHours.changes, "Live hours", billingHours.live, { v: "0.0", v2: "0.0" });
+  pair("Total billing hours", billingHours.total, remainingLabel, remainingValue, { v: "0.0", v2: "0.0" });
+  pair("Hours summary", `${formatHours(billingHours.total)} / ${formatHours(project.estimatedHours)}`, "", "");
   sheet.addRow([]);
 
   section("Financial information");

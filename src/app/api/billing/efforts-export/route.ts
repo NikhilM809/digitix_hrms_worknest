@@ -53,6 +53,7 @@ export async function POST(request: Request) {
       actualCompletionDate: project.actualCompletionDate,
       managerName: project.manager.name,
       currencyCode: project.currency?.code ?? "",
+      billingChangesHours: project.billingChangesHours,
       timeEntries: project.timeEntries,
       invoices: project.invoices,
     })),

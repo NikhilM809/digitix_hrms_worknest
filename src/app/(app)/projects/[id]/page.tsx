@@ -3,22 +3,24 @@ import { format } from "date-fns";
 import { addProjectNote } from "@/actions/misc";
 import { closeProject, deleteProject, reopenProject } from "@/actions/projects";
 import { HourEntryEditor } from "@/components/hour-entry-editor";
-import { productivityHours, requiresChangeApproval } from "@/lib/hour-approval";
+import { productivityHours, sumProductivity } from "@/lib/hour-approval";
 import { createTask } from "@/actions/tasks";
 import { ProjectForm } from "@/components/project-form";
 import { ProjectStatusForm } from "@/components/project-status-form";
 import { AddHoursForm } from "@/components/hours-form";
+import { BillingHoursForm } from "@/components/billing-hours-form";
 import { AlertPills, BillingBadge, HoursBar, TaskBadge } from "@/components/status";
 import { ConfirmForm } from "@/components/confirm-form";
 import { ExportApprovalButton } from "@/components/export-approval-button";
 import { Button, Card, EmptyState, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { PROJECT_STATUS_LABEL, ROLE_LABEL, TASK_STATUS_LABEL, workTypeLabel } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { getSettings, hoursByWorkType, sumHours } from "@/lib/data";
+import { getSettings, hoursByWorkType } from "@/lib/data";
 import { billingStatusForProject } from "@/lib/finance";
 import { getActiveCurrencies } from "@/lib/currency";
 import { getActiveClients, getActiveWorkTypes } from "@/lib/catalog";
-import { formatDate, formatHours, formatMoney } from "@/lib/format";
+import { formatDate, formatHours, formatMoney, getActiveTimeZone } from "@/lib/format";
+import { formatDateTimeInZone } from "@hrms/lib/timezone-utils";
 import { STAFF_ROLES, TASK_ASSIGNEE_ROLES, canSeeFinance, isAdminLike, requireRole } from "@/lib/permissions";
 import { asFormAction } from "@/lib/utils";
 import { listDirectReportUsers, managerCanAccessProject } from "@/lib/direct-reports";
@@ -55,13 +57,20 @@ export default async function ProjectDetailPage({
       currency: true,
       exports: { include: { exportedBy: true }, orderBy: { exportedAt: "desc" }, take: 5 },
       statusChanges: { include: { changedBy: true }, orderBy: { changedAt: "desc" }, take: 8 },
+      activities: {
+        where: { createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+        include: { actor: true },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
   if (!project) notFound();
   if (user.role === "MANAGER" && !(await managerCanAccessProject(user.id, project.id))) notFound();
 
-  const actual = sumHours(project.timeEntries);
-  const breakdown = hoursByWorkType(project.timeEntries);
+  const actual = sumProductivity(project.timeEntries);
+  const breakdown = hoursByWorkType(
+    project.timeEntries.map((entry) => ({ ...entry, hours: productivityHours(entry) })),
+  );
   const heldFrom = project.statusChanges.find((change) => change.toStatus === "HOLD")?.fromStatus;
   const resumeFrom = project.status === "HOLD" && heldFrom && isProjectStatus(heldFrom) && heldFrom !== "HOLD" ? heldFrom : null;
   const people = await listAssignablePeople();
@@ -84,7 +93,7 @@ export default async function ProjectDetailPage({
     <div>
       <PageHeader
         title={project.name}
-        description={`${project.code} · ${project.clientName}`}
+        description={`${project.dxlCode || "No DXL ID"} · ${project.code} · ${project.clientName}`}
         actions={
           <div className="flex flex-wrap gap-2">
             {project.status !== "CLOSE" && project.status !== "CANCEL" ? (
@@ -116,6 +125,7 @@ export default async function ProjectDetailPage({
       />
       <div className="mb-4 flex flex-wrap items-start gap-4">
         <ProjectStatusForm
+          unrestricted={user.role === "ADMIN"}
           projectId={project.id}
           status={project.status}
           changedByName={project.statusChangedBy?.name}
@@ -146,6 +156,10 @@ export default async function ProjectDetailPage({
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="p-6 lg:col-span-2">
             <dl className="grid gap-4 sm:grid-cols-2 text-sm">
+              <div>
+                <dt className="text-muted">DXL Project ID</dt>
+                <dd className="mt-1 font-medium">{project.dxlCode || "—"}</dd>
+              </div>
               <div>
                 <dt className="text-muted">Project ID</dt>
                 <dd className="mt-1 font-medium">{project.code}</dd>
@@ -205,14 +219,30 @@ export default async function ProjectDetailPage({
           <Card className="p-6">
             <HoursBar actual={actual} estimated={project.estimatedHours} />
             <div className="mt-4 space-y-2 text-sm">
+              <p className="text-xs uppercase tracking-wide text-muted">Productivity</p>
               <p>Initial: {formatHours(breakdown.initial)}</p>
               <p>Changes: {formatHours(breakdown.changes)}</p>
               <p>Live / PM: {formatHours(breakdown.live)}</p>
               {breakdown.other > 0 ? <p>Other: {formatHours(breakdown.other)}</p> : null}
-              <p className="font-medium">Total: {formatHours(breakdown.total)}</p>
+              <p className="font-medium">Total: {formatHours(actual)}</p>
             </div>
           </Card>
         </div>
+      ) : null}
+
+      {tab === "overview" && finance && user.role === "ADMIN" ? (
+        <Card className="mt-6 p-6">
+          <h2 className="font-display text-xl">Billing hours</h2>
+          <p className="mb-4 mt-1 text-sm text-muted">
+            These hours are used for billing and reports. Employee time entries stay on productivity.
+          </p>
+          <BillingHoursForm
+            projectId={project.id}
+            initialHours={project.billingInitialHours}
+            changesHours={project.billingChangesHours}
+            liveHours={project.billingLiveHours}
+          />
+        </Card>
       ) : null}
 
       {tab === "overview" && project.statusChanges.length > 0 ? (
@@ -422,7 +452,7 @@ export default async function ProjectDetailPage({
                   <th className="px-5 py-3 text-right">Original</th>
                   <th className="px-5 py-3 text-right">Billable</th>
                   <th className="px-5 py-3">Notes</th>
-                  <th className="px-5 py-3">Approval</th>
+                  <th className="px-5 py-3">Update</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,15 +469,42 @@ export default async function ProjectDetailPage({
                         entryId={entry.id}
                         hours={entry.hours}
                         notes={entry.notes}
-                        status={entry.status}
-                        canApprove={user.role === "ADMIN" && requiresChangeApproval(entry.workType)}
-                        canEdit={user.role === "ADMIN" || isAdminLike(user.role) || entry.projectId === project.id && project.managerId === user.id}
+                        canEdit={user.role === "ADMIN" || isAdminLike(user.role) || (entry.projectId === project.id && project.managerId === user.id)}
                       />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </Card>
+          <Card className="overflow-x-auto">
+            <div className="border-b border-line px-5 py-4">
+              <h2 className="font-display text-xl">Last 7 days</h2>
+            </div>
+            {project.activities.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-muted">No status, hours, or billing changes in the last 7 days.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-black/5 text-left text-xs uppercase text-muted dark:bg-white/5">
+                  <tr>
+                    <th className="px-5 py-3">When</th>
+                    <th className="px-5 py-3">Who</th>
+                    <th className="px-5 py-3">Change</th>
+                    <th className="px-5 py-3">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.activities.map((row) => (
+                    <tr key={row.id} className="border-t border-line">
+                      <td className="px-5 py-3">{formatDateTimeInZone(row.createdAt, getActiveTimeZone())}</td>
+                      <td className="px-5 py-3">{row.actor.name}</td>
+                      <td className="px-5 py-3">{row.action}</td>
+                      <td className="px-5 py-3">{row.detail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
         </div>
       ) : null}
@@ -485,6 +542,7 @@ export default async function ProjectDetailPage({
           currencies={currencies}
           clients={clients}
           canEditFinance={finance}
+          unrestricted={user.role === "ADMIN"}
           resumeFrom={resumeFrom}
           defaults={{
             name: project.name,

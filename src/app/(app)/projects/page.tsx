@@ -167,6 +167,7 @@ export default async function ProjectsPage({
             <thead className="bg-black/5 text-left text-xs uppercase tracking-wide text-muted dark:bg-white/5">
               <tr>
                 <th className="px-5 py-3">Project</th>
+                <th className="px-5 py-3">DXL Project ID</th>
                 <th className="px-5 py-3">Client</th>
                 <th className="px-5 py-3">Manager</th>
                 <th className="px-5 py-3">Status</th>
@@ -197,6 +198,7 @@ export default async function ProjectsPage({
                         />
                       </div>
                     </td>
+                    <td className="px-5 py-3">{project.dxlCode || "—"}</td>
                     <td className="px-5 py-3">{project.clientName}</td>
                     <td className="px-5 py-3">
                       {user.role === "ADMIN" ? (
@@ -213,6 +215,7 @@ export default async function ProjectsPage({
                     <td className="px-5 py-3">
                       <ProjectStatusForm
                         compact
+                        unrestricted={user.role === "ADMIN"}
                         projectId={project.id}
                         status={project.status}
                         changedByName={project.statusChangedBy?.name}

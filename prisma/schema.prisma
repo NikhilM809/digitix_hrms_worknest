@@ -81,11 +81,13 @@ model User {
   exports               ProjectExport[]
   statusChangedProjects Project[]              @relation("StatusChanger")
   statusChanges         ProjectStatusChange[]
+  projectActivities     ProjectActivity[]
 }
 
 model Project {
   id                   String        @id @default(cuid())
   code                 String        @unique
+  dxlCode              String?       @unique
   name                 String
   clientName           String
   description          String        @default("")
@@ -105,6 +107,9 @@ model Project {
   currencyId           String?
   currency             Currency?     @relation(fields: [currencyId], references: [id])
   billingStage         BillingStage  @default(NONE)
+  billingInitialHours  Float         @default(0)
+  billingChangesHours  Float         @default(0)
+  billingLiveHours     Float         @default(0)
   estimatedHours       Float
   startDate            DateTime?
   eta                  DateTime
@@ -124,6 +129,7 @@ model Project {
   invoices       Invoice[]
   exports        ProjectExport[]
   statusChanges  ProjectStatusChange[]
+  activities     ProjectActivity[]
 
   @@index([status])
   @@index([managerId])
@@ -201,6 +207,20 @@ model ProjectNote {
   author    User     @relation(fields: [authorId], references: [id])
   content   String
   createdAt DateTime @default(now())
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  detail    String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([projectId])
 }
 
 model ProjectStatusChange {
