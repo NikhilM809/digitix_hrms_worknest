@@ -3,18 +3,7 @@ import { prisma } from "@hrms/lib/prisma";
 import { isManager } from "@hrms/lib/auth";
 import { requireAuth, apiSuccess, apiError } from "@hrms/lib/api-utils";
 import { formatDateTime } from "@hrms/lib/utils";
-
-function startOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
+import { getCompanyTimezone, startOfDayInZone } from "@hrms/lib/company-timezone";
 
 function getLast6Months() {
   const months: { label: string; year: number; month: number }[] = [];
@@ -45,8 +34,10 @@ export async function GET() {
     const { error, user } = await requireAuth();
     if (error || !user) return error;
 
-    const today = startOfDay();
-    const todayEnd = endOfDay();
+    const timeZone = await getCompanyTimezone();
+    const today = startOfDayInZone(new Date(), timeZone);
+    const todayEnd = new Date(today);
+    todayEnd.setUTCHours(23, 59, 59, 999);
     const employeeScope = buildEmployeeScope(user.role, user.id);
     const scopedUserIds =
       user.role === RoleName.EMPLOYEE

@@ -10,6 +10,7 @@ import {
   weekKeyInZone,
 } from "@hrms/lib/attendance-hours";
 import { formatDateInZone, formatTimeInZone, getCompanyTimezone } from "@hrms/lib/company-timezone";
+import { repairAttendanceDatesOnce } from "@hrms/lib/repair-attendance-dates";
 
 async function getManagerUserFilter(userId: string) {
   const team = await prisma.user.findMany({
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
     switch (type) {
       case "attendance": {
         const timeZone = await getCompanyTimezone();
+        await repairAttendanceDatesOnce();
         const records = await prisma.attendance.findMany({
           where: {
             ...(from && to ? { date: paddedDateRange(from, to) } : {}),

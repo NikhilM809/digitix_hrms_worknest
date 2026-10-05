@@ -1,34 +1,30 @@
 import { prisma } from "@hrms/lib/prisma";
-import { requireAuth, apiSuccess, apiError } from "@hrms/lib/api-utils";
+import { requireAuth, apiSuccess } from "@hrms/lib/api-utils";
 import { getWorkScheduleForUserOnDate } from "@hrms/lib/work-schedule";
 import { autoCloseForgottenCheckouts } from "@hrms/lib/forgotten-checkout";
-import { getCompanyTimezone } from "@hrms/lib/company-timezone";
-
-function startOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function parseTimeToDate(timeStr: string, baseDate: Date): Date {
-  const [hours, minutes] = timeStr.split(":").map(Number);
-  const d = new Date(baseDate);
-  d.setHours(hours, minutes, 0, 0);
-  return d;
-}
+import {
+  getCompanyTimezone,
+  isLateForSchedule,
+  startOfDayInZone,
+} from "@hrms/lib/company-timezone";
+import { repairAttendanceDatesOnce } from "@hrms/lib/repair-attendance-dates";
 
 export async function GET() {
   const { error, user } = await requireAuth();
   if (error || !user) return error;
 
-  const today = startOfDay();
   const now = new Date();
   const timeZone = await getCompanyTimezone();
+  await repairAttendanceDatesOnce();
+  const today = startOfDayInZone(now, timeZone);
   await autoCloseForgottenCheckouts(user.id, now, timeZone, "saturday-preview");
   const schedule = await getWorkScheduleForUserOnDate(user.id, today);
-  const workStart = parseTimeToDate(schedule.workStartTime, today);
-  const lateCutoff = new Date(workStart.getTime() + schedule.lateThreshold * 60 * 1000);
-  const isLateNow = now > lateCutoff;
+  const isLateNow = isLateForSchedule(
+    now,
+    schedule.workStartTime,
+    schedule.lateThreshold,
+    timeZone
+  );
 
   const existing = await prisma.attendance.findUnique({
     where: {
