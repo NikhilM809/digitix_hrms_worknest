@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma, Role, ProjectStatus, TrackingStatus } from "@prisma/client";
+import { Prisma, Role, ProjectStatus, TrackingStatus, BillingStage } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { splitEstimatedHours } from "@/lib/work-types";
@@ -191,6 +191,7 @@ export async function createProject(formData: FormData) {
 
   const sellValue = parsed.data.sellValue ?? 0;
   const split = readHourSplit(formData, parsed.data.estimatedHours);
+  const billingStage: BillingStage = parsed.data.status === "CLOSE" ? "PENDING" : "NONE";
   const now = new Date();
   const projectData = {
       code,
@@ -206,7 +207,7 @@ export async function createProject(formData: FormData) {
       marginHours: split.marginHours,
       initialEstimatedHours: parsed.data.estimatedHours,
       currencyId: currency.id,
-      billingStage: parsed.data.status === "CLOSE" ? "PENDING" : "NONE",
+      billingStage,
       estimatedHours: parsed.data.estimatedHours,
       startDate: parseDate(parsed.data.startDate),
       eta,

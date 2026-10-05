@@ -417,7 +417,7 @@ export default async function ProjectDetailPage({
                         <TaskBadge status={task.status} />
                       </td>
                       <td className="px-5 py-3 text-right">{formatHours(task.estimatedHours)}</td>
-                      <td className="px-5 py-3 text-right">{formatHours(sumHours(task.timeEntries))}</td>
+                      <td className="px-5 py-3 text-right">{formatHours(sumProductivity(task.timeEntries))}</td>
                       <td className="px-5 py-3">{formatDate(task.dueDate)}</td>
                       <td className="px-5 py-3 text-muted">{task.notes || "—"}</td>
                     </tr>
